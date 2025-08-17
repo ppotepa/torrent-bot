@@ -1,6 +1,36 @@
-# Torrent Bot - Automated Media Server Library
+# Torrent Bot - Modern SOLID Architecture 🚀
 
 > **⚠️ Legal Disclaimer**: This repository is intended for educational and fair use purposes only. Piracy is illegal and we do not condone or support any illegal downloading of copyrighted material. Users are responsible for ensuring they comply with their local laws and only download content they have the legal right to access.
+
+## 🏗️ Architecture Overview
+
+This bot has been completely refactored using **SOLID principles** for maintainability, testability, and extensibility:
+
+### 📁 Project Structure
+```
+src/
+├── config/          # Single Responsibility: Configuration management
+├── core/            # Business logic and services
+├── interfaces/      # Contracts and abstractions (Dependency Inversion)
+├── integrations/    # External service implementations
+└── utils/           # Shared utilities and helpers
+```
+
+### 🔧 Key Features
+- **Interface Segregation**: Clean contracts for all components
+- **Dependency Injection**: Services receive dependencies via constructor
+- **Single Responsibility**: Each class has one clear purpose
+- **Open/Closed**: Easy to extend without modifying existing code
+- **Configuration as Code**: Type-safe configuration with validation
+
+### 🚀 Quick Start
+```bash
+# Modern SOLID architecture
+python modern_bot.py
+
+# Legacy bot (still available)
+python bot.py
+```
 
 ## 🎯 Purpose
 

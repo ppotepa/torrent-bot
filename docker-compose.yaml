@@ -6,26 +6,38 @@ services:
     container_name: telegram-bot
     restart: unless-stopped
     environment:
+      # Telegram Bot Configuration
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+      TELEGRAM_ALLOWED_USERS: "${TELEGRAM_ALLOWED_USERS}"
+      TELEGRAM_ADMIN_CHAT_ID: "${TELEGRAM_ADMIN_CHAT_ID}"
+      TELEGRAM_NOTIFICATION_CHAT_ID: "${TELEGRAM_NOTIFICATION_CHAT_ID}"
 
-      # Jackett (using zerotier network)
-      JACKETT_URL: "http://jackett:9117"
-      JACKETT_API_KEY: "${JACKETT_API_KEY}"
-
-      # 🔥 20 most popular indexers (must be added/enabled in Jackett)
-      JACKETT_INDEXERS: "yts,nyaa,eztv,1337x,torrentgalaxy,thepiratebay,torlock,limetorrents,glodls,bitsearch,torrentfunk,magnetdl,yourbittorrent,zooqle,torrentdownloads,linuxtracker,anidex,animetosho,idope,ettv"
-
-      # Speed tuning
-      JACKETT_CONNECT_TIMEOUT: "3"
-      JACKETT_READ_TIMEOUT: "12"
-      JACKETT_MAX_WORKERS: "8"
-      JACKETT_RESULT_LIMIT: "5"
-
-      # qBittorrent creds (using zerotier network)
+      # qBittorrent Configuration (using zerotier network service names)
       QBIT_HOST: "qbittorrent"
       QBIT_PORT: "8080"
-      QBIT_USER: "${QBIT_USER:-admin}"
-      QBIT_PASS: "${QBIT_PASS:-adminadmin}"
+      QBIT_USERNAME: "${QBIT_USER:-admin}"
+      QBIT_PASSWORD: "${QBIT_PASS:-adminadmin}"
+      QBIT_HTTPS: "false"
+
+      # Jackett Configuration (using zerotier network service names) 
+      JACKETT_HOST: "jackett"
+      JACKETT_PORT: "9117"
+      JACKETT_API_KEY: "${JACKETT_API_KEY}"
+      JACKETT_HTTPS: "false"
+
+      # Download Paths (D: drive for direct storage)
+      DOWNLOAD_PATH: "D:\\downloads"
+      COMPLETED_PATH: "D:\\downloads\\completed"
+      TEMP_PATH: "D:\\downloads\\temp"
+
+      # Search Configuration
+      SEARCH_LIMIT: "50"
+      MIN_SEEDERS: "1"
+      SEARCH_TIMEOUT: "30"
+
+      # Application Configuration
+      DEBUG: "false"
+      LOG_LEVEL: "INFO"
     volumes:
       - "${DOWNLOAD_PATH:-D:\\downloads}:/app/downloads"
     depends_on:

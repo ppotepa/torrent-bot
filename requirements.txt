@@ -1,6 +1,16 @@
+# Core dependencies for modern SOLID architecture
+python-telegram-bot>=20.0
+aiohttp>=3.8.0
+asyncio
+dataclasses
+
+# Legacy dependencies (keep for backward compatibility)
 pyTelegramBotAPI
 yt-dlp
 qbittorrent-api
 requests
 psutil
 python-dotenv
+
+# Development and testing
+typing-extensions
