@@ -166,98 +166,98 @@ def format_system_info(info):
     lines = []
     
     # Header
-    lines.append("🖥️ **System Information**")
+    lines.append("🖥️ <b>System Information</b>")
     lines.append("=" * 30)
     
     # Check if this is basic info (no psutil)
     if not PSUTIL_AVAILABLE:
-        lines.append("⚠️ *Limited info - psutil not available*")
+        lines.append("⚠️ <i>Limited info - psutil not available</i>")
         lines.append("")
     
     # System Details
     sys_info = info.get('system', {})
-    lines.append(f"**🔧 System Details:**")
-    lines.append(f"• **Platform**: {sys_info.get('platform', 'Unknown')} {sys_info.get('platform_release', '')}")
-    lines.append(f"• **Architecture**: {sys_info.get('architecture', 'Unknown')}")
-    lines.append(f"• **Hostname**: {sys_info.get('hostname', 'Unknown')}")
-    lines.append(f"• **Processor**: {sys_info.get('processor', 'Unknown')}")
-    lines.append(f"• **Python**: {sys_info.get('python_version', 'Unknown')}")
+    lines.append(f"<b>🔧 System Details:</b>")
+    lines.append(f"• <b>Platform</b>: {_escape_html(sys_info.get('platform', 'Unknown'))} {_escape_html(sys_info.get('platform_release', ''))}")
+    lines.append(f"• <b>Architecture</b>: {_escape_html(sys_info.get('architecture', 'Unknown'))}")
+    lines.append(f"• <b>Hostname</b>: {_escape_html(sys_info.get('hostname', 'Unknown'))}")
+    lines.append(f"• <b>Processor</b>: {_escape_html(sys_info.get('processor', 'Unknown'))}")
+    lines.append(f"• <b>Python</b>: {_escape_html(sys_info.get('python_version', 'Unknown'))}")
     if 'boot_time' in sys_info:
-        lines.append(f"• **Boot Time**: {sys_info.get('boot_time', 'Unknown')}")
+        lines.append(f"• <b>Boot Time</b>: {_escape_html(sys_info.get('boot_time', 'Unknown'))}")
     lines.append("")
     
     # Hardware Information
     hw_info = info.get('hardware', {})
     if hw_info:  # Only show if psutil is available
-        lines.append(f"**⚙️ Hardware:**")
-        lines.append(f"• **CPU Cores**: {hw_info.get('cpu_count', 'Unknown')} logical, {hw_info.get('cpu_count_physical', 'Unknown')} physical")
-        lines.append(f"• **CPU Usage**: {hw_info.get('cpu_percent', 0):.1f}%")
+        lines.append(f"<b>⚙️ Hardware:</b>")
+        lines.append(f"• <b>CPU Cores</b>: {hw_info.get('cpu_count', 'Unknown')} logical, {hw_info.get('cpu_count_physical', 'Unknown')} physical")
+        lines.append(f"• <b>CPU Usage</b>: {hw_info.get('cpu_percent', 0):.1f}%")
         
         if 'memory_total' in hw_info:
             total_mem = format_bytes(hw_info['memory_total'])
             used_mem = format_bytes(hw_info['memory_used'])
             available_mem = format_bytes(hw_info['memory_available'])
             mem_percent = hw_info.get('memory_percent', 0)
-            lines.append(f"• **Memory**: {used_mem} / {total_mem} ({mem_percent:.1f}% used)")
-            lines.append(f"• **Available**: {available_mem}")
+            lines.append(f"• <b>Memory</b>: {used_mem} / {total_mem} ({mem_percent:.1f}% used)")
+            lines.append(f"• <b>Available</b>: {available_mem}")
         lines.append("")
     
     # Network Information
     net_info = info.get('network', {})
     if 'error' not in net_info:
-        lines.append(f"**🌐 Network:**")
-        lines.append(f"• **Hostname**: {net_info.get('hostname', 'Unknown')}")
-        lines.append(f"• **Local IP**: {net_info.get('local_ip', 'Unknown')}")
-        lines.append(f"• **Interfaces**: {net_info.get('network_interfaces', 'Unknown')}")
+        lines.append(f"<b>🌐 Network:</b>")
+        lines.append(f"• <b>Hostname</b>: {_escape_html(net_info.get('hostname', 'Unknown'))}")
+        lines.append(f"• <b>Local IP</b>: {_escape_html(net_info.get('local_ip', 'Unknown'))}")
+        lines.append(f"• <b>Interfaces</b>: {_escape_html(str(net_info.get('network_interfaces', 'Unknown')))}")
         lines.append("")
     
     # Storage Information
     storage_info = info.get('storage', [])
     if storage_info:  # Only show if psutil is available
-        lines.append(f"**💾 Storage:**")
+        lines.append(f"<b>💾 Storage:</b>")
         for storage in storage_info[:5]:  # Limit to first 5 drives
-            device = storage.get('device', 'Unknown')
-            mountpoint = storage.get('mountpoint', 'Unknown')
-            file_system = storage.get('file_system', 'Unknown')
+            device = _escape_html(storage.get('device', 'Unknown'))
+            mountpoint = _escape_html(storage.get('mountpoint', 'Unknown'))
+            file_system = _escape_html(storage.get('file_system', 'Unknown'))
             
             if 'total' in storage:
                 total = format_bytes(storage['total'])
                 used = format_bytes(storage['used'])
                 free = format_bytes(storage['free'])
                 percent = storage.get('percent', 0)
-                lines.append(f"• **{device}** ({file_system})")
+                lines.append(f"• <b>{device}</b> ({file_system})")
                 lines.append(f"  📁 {mountpoint}")
                 lines.append(f"  📊 {used} / {total} ({percent:.1f}% used)")
                 lines.append(f"  💿 {free} free")
             else:
-                lines.append(f"• **{device}** ({file_system}) - {mountpoint}")
+                lines.append(f"• <b>{device}</b> ({file_system}) - {mountpoint}")
         lines.append("")
     
     # Process Information
     proc_info = info.get('processes', {})
     if proc_info:  # Only show if psutil is available
-        lines.append(f"**⚡ Processes:**")
-        lines.append(f"• **Total Processes**: {proc_info.get('total_processes', 'Unknown')}")
-        lines.append(f"• **Running as**: {proc_info.get('running_user', 'Unknown')}")
+        lines.append(f"<b>⚡ Processes:</b>")
+        lines.append(f"• <b>Total Processes</b>: {proc_info.get('total_processes', 'Unknown')}")
+        lines.append(f"• <b>Running as</b>: {_escape_html(proc_info.get('running_user', 'Unknown'))}")
         lines.append("")
     
     # Bot Information
     bot_info = info.get('bot_info', {})
     if 'error' not in bot_info:
-        lines.append(f"**🤖 Bot Information:**")
+        lines.append(f"<b>🤖 Bot Information:</b>")
         if 'bot_directory' in bot_info:
-            lines.append(f"• **Bot Directory**: `{bot_info.get('bot_directory', 'Unknown')}`")
-        lines.append(f"• **Working Directory**: `{bot_info.get('working_directory', 'Unknown')}`")
-        lines.append(f"• **Python Executable**: `{bot_info.get('python_executable', 'Unknown')}`")
+            lines.append(f"• <b>Bot Directory</b>: <code>{_escape_html(bot_info.get('bot_directory', 'Unknown'))}</code>")
+        lines.append(f"• <b>Working Directory</b>: <code>{_escape_html(bot_info.get('working_directory', 'Unknown'))}</code>")
+        lines.append(f"• <b>Python Executable</b>: <code>{_escape_html(bot_info.get('python_executable', 'Unknown'))}</code>")
         if 'user' in bot_info:
-            lines.append(f"• **Running as**: {bot_info.get('user', 'Unknown')}")
+            lines.append(f"• <b>Running as</b>: {_escape_html(bot_info.get('user', 'Unknown'))}")
     
     # Footer
     lines.append("")
     if PSUTIL_AVAILABLE:
-        lines.append("📊 *System information gathered successfully*")
+        lines.append("📊 <i>System information gathered successfully</i>")
     else:
-        lines.append("📊 *Basic system information (install psutil for full details)*")
+        lines.append("📊 <i>Basic system information (install psutil for full details)</i>")
     
     # Join and ensure it fits Telegram's message limit
     result = "\n".join(lines)
@@ -265,6 +265,20 @@ def format_system_info(info):
         result = result[:3900] + "\n\n... (truncated due to length)"
     
     return result
+
+
+def _escape_html(text):
+    """Escape HTML special characters to prevent parsing errors."""
+    if text is None:
+        return "Unknown"
+    # Convert to string and escape HTML entities
+    text = str(text)
+    text = text.replace('&', '&amp;')
+    text = text.replace('<', '&lt;')
+    text = text.replace('>', '&gt;')
+    # Also escape backslashes which can cause issues in paths
+    text = text.replace('\\', '/')
+    return text
 
 
 def handle_sysinfo_command(bot, message):
@@ -287,7 +301,7 @@ def handle_sysinfo_command(bot, message):
         except:
             pass  # Ignore deletion errors
         
-        bot.send_message(message.chat.id, formatted_info, parse_mode='Markdown')
+        bot.send_message(message.chat.id, formatted_info, parse_mode='HTML')
         
     except Exception as e:
         error_msg = f"❌ Failed to get system information: {str(e)}"
