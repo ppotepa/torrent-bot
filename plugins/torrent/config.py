@@ -8,7 +8,7 @@ import os
 class TorrentConfig:
     """Configuration settings for torrent operations."""
     
-    # qBittorrent settings
+    # qBittorrent settings (using Docker service names for zerotier network)
     QBIT_HOST = os.getenv("QBIT_HOST", "qbittorrent")
     QBIT_PORT = int(os.getenv("QBIT_PORT", "8080"))
     QBIT_USER = os.getenv("QBIT_USER", "admin")
@@ -18,7 +18,7 @@ class TorrentConfig:
     # Bot download directory
     BOT_DOWNLOADS_DIR = os.getenv("BOT_DOWNLOADS_DIR", "/app/downloads")
     
-    # Jackett settings
+    # Jackett settings (using Docker service names for zerotier network)
     JACKETT_URL = os.getenv("JACKETT_URL", "http://jackett:9117").rstrip("/")
     JACKETT_API_KEY = os.getenv("JACKETT_API_KEY", "")
     

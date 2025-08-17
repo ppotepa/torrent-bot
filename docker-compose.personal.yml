@@ -1,5 +1,8 @@
 version: "3.8"
 
+# Personal/simplified docker-compose configuration
+# Uses localhost for all connections to avoid network issues
+
 services:
   telegram-bot:
     build: .
@@ -7,32 +10,31 @@ services:
     restart: unless-stopped
     environment:
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
-
-      # Jackett (using zerotier network)
-      JACKETT_URL: "http://jackett:9117"
+      
+      # Using localhost for simplicity
+      JACKETT_URL: "http://localhost:9117"
       JACKETT_API_KEY: "${JACKETT_API_KEY}"
-
-      # 🔥 20 most popular indexers (must be added/enabled in Jackett)
-      JACKETT_INDEXERS: "yts,nyaa,eztv,1337x,torrentgalaxy,thepiratebay,torlock,limetorrents,glodls,bitsearch,torrentfunk,magnetdl,yourbittorrent,zooqle,torrentdownloads,linuxtracker,anidex,animetosho,idope,ettv"
-
+      
+      # Popular indexers
+      JACKETT_INDEXERS: "yts,nyaa,eztv,1337x,torrentgalaxy,thepiratebay,torlock,limetorrents,glodls,bitsearch"
+      
       # Speed tuning
       JACKETT_CONNECT_TIMEOUT: "3"
       JACKETT_READ_TIMEOUT: "12"
-      JACKETT_MAX_WORKERS: "8"
+      JACKETT_MAX_WORKERS: "4"
       JACKETT_RESULT_LIMIT: "5"
-
-      # qBittorrent creds (using zerotier network)
-      QBIT_HOST: "qbittorrent"
+      
+      # qBittorrent using localhost
+      QBIT_HOST: "localhost"
       QBIT_PORT: "8080"
-      QBIT_USER: "${QBIT_USER:-admin}"
-      QBIT_PASS: "${QBIT_PASS:-adminadmin}"
+      QBIT_USER: "admin"
+      QBIT_PASS: "adminadmin"
     volumes:
       - "${DOWNLOAD_PATH:-D:\\downloads}:/app/downloads"
+    network_mode: host
     depends_on:
       - qbittorrent
       - flaresolverr
-    networks:
-      - zerotier
 
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
@@ -43,17 +45,12 @@ services:
       - PGID=1000
       - TZ=Europe/Warsaw
       - WEBUI_PORT=8080
-      - QBT_WEBUI_USERNAME=${QBIT_USER:-admin}
-      - QBT_WEBUI_PASSWORD=${QBIT_PASS:-adminadmin}
-    ports:
-      - "8080:8080"
-      - "6881:6881"
-      - "6881:6881/udp"
+      - QBT_WEBUI_USERNAME=admin
+      - QBT_WEBUI_PASSWORD=adminadmin
     volumes:
       - "${DOWNLOAD_PATH:-D:\\downloads}:/downloads"
       - "${QBIT_CONFIG_PATH:-D:\\qbittorrent-config}:/config"
-    networks:
-      - zerotier
+    network_mode: host
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
@@ -62,13 +59,4 @@ services:
     environment:
       - LOG_LEVEL=info
       - TZ=Europe/Warsaw
-    ports:
-      - "8191:8191"    # FlareSolverr Web API
-    networks:
-      - zerotier
-
-networks:
-  zerotier:
-    external: true
-
-
+    network_mode: host
