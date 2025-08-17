@@ -16,13 +16,22 @@ from plugins import youtube, facebook, torrent, downloads, sysinfo
 # import download monitor
 from plugins.torrent.download_monitor import start_download_monitoring, stop_download_monitoring, get_download_monitor
 
+# import notification system
+from notification_system import initialize_notification_manager, get_notification_manager
+
 # --- Token ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 if not TOKEN or ":" not in TOKEN:
     raise ValueError("Invalid TELEGRAM_BOT_TOKEN env var (must contain a colon).")
 bot = telebot.TeleBot(TOKEN)
 
-# Notification function for download completions
+# Initialize notification system
+admin_user_id = os.getenv("ADMIN_USER_ID", "").strip()
+default_chat_id = int(admin_user_id) if admin_user_id else None
+notification_manager = initialize_notification_manager(bot, default_chat_id)
+print(f"📨 Notification system initialized (default chat: {default_chat_id})")
+
+# Notification function for download completions (legacy compatibility)
 def send_download_notification(message_text: str):
     """Send download completion notification to admin user."""
     try:
@@ -66,6 +75,7 @@ def send_welcome(message):
         "   Flags: [start], [stop], [status]\n"
         "• /monitor_check — force check for completed downloads\n"
         "• /d [filter] — list qBittorrent downloads (filters: active, completed, seeding, paused, errored)\n"
+        "• /notifications — check notification status and pending notifications\n"
         "• /si:[flags] — display system information\n"
         "   Flags: [detailed], [brief], [cpu], [memory], [disk], [network]\n\n"
         "📌 You can also just paste a link and I'll detect the right plugin.\n\n"
@@ -96,7 +106,7 @@ def cmd_torrent(message):
             "• `all` - Exhaustive search across ALL indexers\n"
             "• `rich` - Comprehensive search across configured indexers\n"
             "• `music` - Focused search across music indexers\n"
-            "• `notify` - Send notification when download completes\n"
+            "• `notify` - Get notified when this specific torrent completes\n"
             "• `silent` - Disable notifications\n\n"
             "📝 **Examples:**\n"
             "• `/t ubuntu:[all]` - Search with all indexers\n"
@@ -359,6 +369,71 @@ def cmd_sysinfo(message):
         
     except Exception as e:
         bot.reply_to(message, f"❌ System info failed: {e}")
+
+# --- Notifications Status ---
+@bot.message_handler(commands=["notifications", "notify_status"])
+def cmd_notifications(message):
+    """Show notification system status and pending notifications."""
+    try:
+        import time
+        from notification_system import get_notification_manager
+        from plugins.torrent.notification_handler import get_torrent_notification_manager
+        
+        # Get notification manager status
+        manager = get_notification_manager()
+        if not manager:
+            bot.reply_to(message, "❌ Notification system not initialized")
+            return
+        
+        # Get torrent notification manager status
+        torrent_manager = get_torrent_notification_manager()
+        
+        # Build status message
+        status_parts = []
+        
+        # General notification status
+        status_parts.append("🔔 **Notification System Status**\n")
+        status_parts.append(f"• Sent notifications: {len(manager.sent_notifications)}")
+        status_parts.append(f"• Pending notifications: {len(manager.pending_notifications)}")
+        status_parts.append(f"• Default chat ID: {manager.default_chat_id}")
+        
+        # Torrent-specific notifications
+        status_parts.append(f"\n🎯 **Torrent Notifications**")
+        status_parts.append(f"• Monitor running: {'✅ Yes' if torrent_manager.running else '❌ No'}")
+        status_parts.append(f"• Monitored torrents: {len(torrent_manager.monitored_torrents)}")
+        
+        # Show pending notifications for this user
+        user_notifications = []
+        for notif_id, notif in manager.pending_notifications.items():
+            if notif.metadata.get('user_id') == message.from_user.id:
+                user_notifications.append(notif)
+        
+        if user_notifications:
+            status_parts.append(f"\n📋 **Your Pending Notifications ({len(user_notifications)}):**")
+            for notif in user_notifications[:5]:  # Show max 5
+                torrent_name = notif.metadata.get('torrent_name', 'Unknown')
+                age_hours = (time.time() - notif.created_at) / 3600
+                status_parts.append(f"• {torrent_name[:40]}... ({age_hours:.1f}h ago)")
+        else:
+            status_parts.append(f"\n📋 **Your Pending Notifications:** None")
+        
+        # Show recent monitored torrents for this user
+        user_torrents = []
+        for hash_id, data in torrent_manager.monitored_torrents.items():
+            if data['user_id'] == message.from_user.id:
+                user_torrents.append(data)
+        
+        if user_torrents:
+            status_parts.append(f"\n🔍 **Your Monitored Torrents ({len(user_torrents)}):**")
+            for data in user_torrents[:3]:  # Show max 3
+                age_hours = (time.time() - data['added_at']) / 3600
+                status_parts.append(f"• {data['name'][:40]}... ({age_hours:.1f}h ago)")
+        
+        status_message = "\n".join(status_parts)
+        bot.reply_to(message, status_message, parse_mode="Markdown")
+        
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error getting notification status: {e}")
 
 # --- Downloader ---
 @bot.message_handler(commands=["dl"])

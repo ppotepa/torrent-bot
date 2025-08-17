@@ -110,6 +110,7 @@ def handle_selection(bot, call):
 
         results = data["results"]
         folder = data["folder"]
+        notify = data.get("notify", False)  # Get notify flag from cache
 
         idx = int(call.data.split("_")[1])
         if idx >= len(results):
@@ -141,6 +142,33 @@ def handle_selection(bot, call):
         # Find the started torrent and send success message
         _send_download_success_message(bot, call, chosen, qbt_client, folder, save_path, download_message)
 
+        # Handle notify flag - register for completion notification
+        if notify:
+            try:
+                from .notification_handler import register_torrent_for_notification
+                
+                # Get torrent hash for notification tracking
+                infohash = extract_infohash_from_magnet(magnet) if magnet else None
+                if infohash:
+                    register_torrent_for_notification(
+                        torrent_hash=infohash,
+                        torrent_name=title,
+                        user_id=user_id,
+                        chat_id=call.message.chat.id,
+                        additional_info={
+                            'tracker': chosen.get("Tracker", ""),
+                            'size': chosen.get("Size", 0),
+                            'folder': folder,
+                            'save_path': save_path
+                        }
+                    )
+                    bot.send_message(call.message.chat.id, f"🔔 Notification registered! You'll be notified when '{title}' completes.")
+                else:
+                    bot.send_message(call.message.chat.id, f"⚠️ Could not extract torrent hash for notification. You may not receive completion notification.")
+            except Exception as e:
+                print(f"❌ Error registering notification for torrent {title}: {e}")
+                bot.send_message(call.message.chat.id, f"⚠️ Could not register notification for this torrent.")
+
         # Auto-start download monitor if not already running (and if enabled)
         if config.AUTO_START_MONITOR:
             try:
@@ -155,7 +183,8 @@ def handle_selection(bot, call):
                             print(f"Failed to send notification: {e}")
                     
                     monitor.start(notification_callback)
-                    bot.send_message(call.message.chat.id, "🔔 Download monitor started automatically - you'll get notified when downloads complete!")
+                    if not notify:  # Only show this message if not using individual notifications
+                        bot.send_message(call.message.chat.id, "🔔 Download monitor started automatically - you'll get notified when downloads complete!")
                 else:
                     print("Monitor already running, skipping auto-start")
             except Exception as e:
