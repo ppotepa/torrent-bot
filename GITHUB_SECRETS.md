@@ -7,16 +7,16 @@ This document explains how to configure your bot using GitHub Actions secrets fo
 Add these secrets in your GitHub repository settings (`Settings > Secrets and variables > Actions`):
 
 ### Telegram Configuration
-- `TELEGRAM_BOT_TOKEN`: `8415463111:AAHfOuL811q_ZGyODB9vy0-h8nYkWnj4ysg`
+- `TELEGRAM_BOT_TOKEN`: `your_bot_token_from_botfather`
 
 ### Jackett Configuration  
-- `JACKETT_API_KEY`: `jackettlocalkey`
+- `JACKETT_API_KEY`: `your_jackett_api_key`
 - `JACKETT_URL`: `http://jackett:9117` (or your actual Jackett URL)
 
 ### qBittorrent Configuration
 - `QBITTORRENT_HOST`: `http://qbittorrent:8080` (or your actual qBittorrent URL)
 - `QBITTORRENT_USERNAME`: `admin`
-- `QBITTORRENT_PASSWORD`: `adminadmin`
+- `QBITTORRENT_PASSWORD`: `your_secure_password`
 
 ## 🚀 How to Add Secrets
 
@@ -28,12 +28,12 @@ Add these secrets in your GitHub repository settings (`Settings > Secrets and va
 ## 📋 Secret Names Reference
 
 ```
-TELEGRAM_BOT_TOKEN=8415463111:AAHfOuL811q_ZGyODB9vy0-h8nYkWnj4ysg
-JACKETT_API_KEY=jackettlocalkey
+TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
+JACKETT_API_KEY=your_jackett_api_key
 JACKETT_URL=http://jackett:9117
 QBITTORRENT_HOST=http://qbittorrent:8080
 QBITTORRENT_USERNAME=admin
-QBITTORRENT_PASSWORD=adminadmin
+QBITTORRENT_PASSWORD=your_secure_password
 ```
 
 ## 🔄 Deployment Workflow
