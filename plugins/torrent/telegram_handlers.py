@@ -26,7 +26,7 @@ from .fallback_manager import FallbackManager
 from .download_monitor import get_download_monitor
 
 
-def start_search(bot, message, folder, query, rich_mode=False, all_mode=False, music_mode=False):
+def start_search(bot, message, folder, query, rich_mode=False, all_mode=False, music_mode=False, notify=False):
     """Handle torrent search requests from Telegram."""
     try:
         # Create busy indicator
@@ -80,7 +80,7 @@ def start_search(bot, message, folder, query, rich_mode=False, all_mode=False, m
 
         # Cache results for user selection
         user_id = message.from_user.id
-        search_service.cache_results(user_id, results, folder, rich_mode, all_mode, music_mode)
+        search_service.cache_results(user_id, results, folder, rich_mode, all_mode, music_mode, notify)
 
         # Generate search results message
         search_mode_label = _get_search_mode_label(rich_mode, all_mode, music_mode, len(results))

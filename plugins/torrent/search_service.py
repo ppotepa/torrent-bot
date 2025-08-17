@@ -49,14 +49,15 @@ class SearchService:
         """Test indexer performance for diagnostics."""
         return self.jackett_client.test_indexer_performance(query)
     
-    def cache_results(self, user_id: int, results: list, folder: str, rich_mode: bool = False, all_mode: bool = False, music_mode: bool = False):
+    def cache_results(self, user_id: int, results: list, folder: str, rich_mode: bool = False, all_mode: bool = False, music_mode: bool = False, notify: bool = False):
         """Cache search results for user selection."""
         search_cache[user_id] = {
             "results": results, 
             "folder": folder, 
             "rich_mode": rich_mode,
             "all_mode": all_mode,
-            "music_mode": music_mode
+            "music_mode": music_mode,
+            "notify": notify
         }
     
     def get_cached_results(self, user_id: int):

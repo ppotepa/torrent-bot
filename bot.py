@@ -51,62 +51,86 @@ def send_welcome(message):
     text = (
         "👋 Welcome to the Media Bot!\n\n"
         "Available commands:\n"
-        "• /dl <url> [folder] — download from YouTube or Facebook\n"
-        "   (best audio by default; add \"video\" at the end to force video if your plugin supports it)\n"
-        "• /t <query> [rich|all|music] — search torrents via Jackett\n"
-        "   ◦ normal: Fast search across popular indexers (top 5 results)\n"
-        "   ◦ rich: Comprehensive search across all configured indexers (top 15)\n"
-        "   ◦ all: Exhaustive search across EVERY indexer on Jackett (top 25)\n"
-        "   ◦ music: Focused search across popular music indexers (top 12)\n"
+        "• /dl <url>:[flags] [folder] — download from YouTube or Facebook\n"
+        "   Flags: [force], [notify], [silent], [background]\n"
+        "   Example: /dl https://youtube.com/watch?v=123:[notify,background]\n"
+        "• /t <query>:[flags] — search torrents via Jackett\n"
+        "   Flags: [all], [rich], [music], [notify], [silent]\n"
+        "   Examples:\n"
+        "   ◦ /t ubuntu:[all] — Exhaustive search across ALL indexers\n"
+        "   ◦ /t music album:[rich,notify] — Rich search with notification\n"
+        "   ◦ /t song:[music] — Music-focused search\n"
         "• /tdiag — run torrent indexer diagnostics\n"
         "• /qdiag — diagnose qBittorrent connection and settings\n"
-        "• /monitor — check download completion monitor status\n"
+        "• /monitor:[flags] — download completion monitor\n"
+        "   Flags: [start], [stop], [status]\n"
         "• /monitor_check — force check for completed downloads\n"
         "• /d [filter] — list qBittorrent downloads (filters: active, completed, seeding, paused, errored)\n"
-        "• /si — display comprehensive system information\n\n"
+        "• /si:[flags] — display system information\n"
+        "   Flags: [detailed], [brief], [cpu], [memory], [disk], [network]\n\n"
         "📌 You can also just paste a link and I'll detect the right plugin.\n\n"
-        "🔄 Enhanced torrent fallback system:\n"
+        "� **New Flag System:**\n"
+        "   • Flags go at the end in square brackets: command query:[flag1,flag2]\n"
+        "   • Each command has its own specific flags\n"
+        "   • Some flags are mutually exclusive (all/rich/music for torrents)\n"
+        "   • Use without flags for default behavior\n"
+        "�🔄 Enhanced torrent fallback system:\n"
         "   • Tries magnet links first\n"
         "   • Falls back to .torrent files\n"
         "   • Reconstructs magnets from hash\n"
         "   • Searches alternative sources\n"
         "   • Visual quality indicators (🔥⭐✅⚠️🧲📁)\n"
-        "   • Rich mode: /t <query> rich for comprehensive search\n"
-        "   • Music mode: /t <query> music for music-focused results\n"
     )
     bot.reply_to(message, text)
 
 # --- Torrent search (/t and /torrents) ---
 @bot.message_handler(commands=["t", "torrent", "torrents"])
 def cmd_torrent(message):
-    parts = message.text.split()
-    if len(parts) < 2:
-        bot.reply_to(message, "⚠️ Usage: /t <search query> [rich|all|music]\n\n• rich: Comprehensive search across configured indexers\n• all: Exhaustive search across ALL indexers on Jackett\n🎵 music: Focused search across popular music indexers")
-        return
+    from universal_flags import parse_universal_flags, validate_command_flags, convert_flags_to_legacy
     
-    # Check for search mode flags
-    rich_mode = False
-    all_mode = False
-    music_mode = False
-    query_parts = parts[1:]
+    def get_torrent_usage():
+        """Get usage message for torrent commands."""
+        return (
+            "⚠️ Usage: `/t <search query>:[flags]`\n\n"
+            "📋 **Available Flags:**\n"
+            "• `all` - Exhaustive search across ALL indexers\n"
+            "• `rich` - Comprehensive search across configured indexers\n"
+            "• `music` - Focused search across music indexers\n"
+            "• `notify` - Send notification when download completes\n"
+            "• `silent` - Disable notifications\n\n"
+            "📝 **Examples:**\n"
+            "• `/t ubuntu:[all]` - Search with all indexers\n"
+            "• `/t ubuntu:[rich,notify]` - Rich search with notification\n"
+            "• `/t ubuntu:[music]` - Music-focused search\n"
+            "• `/t ubuntu` - Normal search (no flags)\n\n"
+            "⚡ **Note:** Search mode flags (all, rich, music) are mutually exclusive"
+        )
     
-    if query_parts and query_parts[-1].lower() == "rich":
-        rich_mode = True
-        query_parts = query_parts[:-1]  # Remove "rich" from query
-    elif query_parts and query_parts[-1].lower() == "all":
-        all_mode = True
-        query_parts = query_parts[:-1]  # Remove "all" from query
-    elif query_parts and query_parts[-1].lower() == "music":
-        music_mode = True
-        query_parts = query_parts[:-1]  # Remove "music" from query
+    # Parse command and extract flags using universal parser
+    query, flags_list, parse_errors = parse_universal_flags(message.text, "t")
+    valid_flags, validation_errors = validate_command_flags(flags_list, "t")
+    legacy_flags = convert_flags_to_legacy(valid_flags, "t")
     
-    query = " ".join(query_parts)
+    # Check if we have a valid query
     if not query.strip():
-        bot.reply_to(message, "⚠️ Usage: /t <search query> [rich|all|music]\n\n• rich: Comprehensive search across configured indexers\n• all: Exhaustive search across ALL indexers on Jackett\n🎵 music: Focused search across popular music indexers")
+        bot.reply_to(message, get_torrent_usage(), parse_mode="Markdown")
         return
+    
+    # Show any flag parsing errors
+    all_errors = parse_errors + validation_errors
+    if all_errors:
+        error_msg = "⚠️ Flag parsing errors:\n" + "\n".join(f"• {err}" for err in all_errors)
+        bot.reply_to(message, error_msg)
+        # Continue processing with valid flags
+    
+    # Extract flags for the torrent module
+    rich_mode = legacy_flags.get('rich_mode', False)
+    all_mode = legacy_flags.get('all_mode', False)
+    music_mode = legacy_flags.get('music_mode', False)
+    notify = legacy_flags.get('notify', False)
     
     # no folder support in this shorthand; pass None
-    torrent.start_search(bot, message, folder=None, query=query, rich_mode=rich_mode, all_mode=all_mode, music_mode=music_mode)
+    torrent.start_search(bot, message, folder=None, query=query, rich_mode=rich_mode, all_mode=all_mode, music_mode=music_mode, notify=notify)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("torrent_"))
 def callback_torrent(call):
@@ -167,12 +191,67 @@ def cmd_qbittorrent_diag(message):
 # --- Download monitor commands ---
 @bot.message_handler(commands=["monitor", "download_monitor"])
 def cmd_download_monitor(message):
+    from universal_flags import parse_universal_flags, validate_command_flags, convert_flags_to_legacy
+    
+    def get_monitor_usage():
+        """Get usage message for monitor commands."""
+        return (
+            "⚠️ Usage: `/monitor` or `/monitor:[flags]`\n\n"
+            "📋 **Available Flags:**\n"
+            "• `start` - Start the download monitor\n"
+            "• `stop` - Stop the download monitor\n"
+            "• `status` - Show monitor status (default)\n"
+            "• `force` - Force action even if already in that state\n\n"
+            "📝 **Examples:**\n"
+            "• `/monitor` - Show monitor status\n"
+            "• `/monitor:[start]` - Start monitoring\n"
+            "• `/monitor:[start,force]` - Force restart monitoring"
+        )
+    
     try:
+        # Handle special case where flags are in the command itself
+        command_text = message.text.strip()
+        
+        # Parse command and extract flags using universal parser
+        query, flags_list, parse_errors = parse_universal_flags(command_text, "monitor")
+        valid_flags, validation_errors = validate_command_flags(flags_list, "monitor")
+        legacy_flags = convert_flags_to_legacy(valid_flags, "monitor")
+        
+        # Show any flag parsing errors
+        all_errors = parse_errors + validation_errors
+        if all_errors:
+            error_msg = "⚠️ Flag parsing errors:\n" + "\n".join(f"• {err}" for err in all_errors)
+            bot.reply_to(message, error_msg)
+            # Continue processing with valid flags
+        
+        action = legacy_flags.get('action', 'status')
+        force = legacy_flags.get('force', False)
+        
         monitor = get_download_monitor()
-        status = monitor.get_monitor_status()
-        bot.send_message(message.chat.id, f"```\n{status}\n```", parse_mode="Markdown")
+        
+        if action == 'start':
+            if monitor.running and not force:
+                bot.reply_to(message, "ℹ️ Download monitor is already running. Use /monitor:[start,force] to restart.")
+            else:
+                if force and monitor.running:
+                    monitor.stop_monitoring()
+                monitor.notification_callback = send_download_notification
+                monitor.start_monitoring()
+                bot.reply_to(message, "✅ Download monitor started")
+        
+        elif action == 'stop':
+            if not monitor.running and not force:
+                bot.reply_to(message, "ℹ️ Download monitor is not running")
+            else:
+                monitor.stop_monitoring()
+                bot.reply_to(message, "✅ Download monitor stopped")
+        
+        else:  # status (default)
+            status = monitor.get_monitor_status()
+            bot.send_message(message.chat.id, f"```\n{status}\n```", parse_mode="Markdown")
+            
     except Exception as e:
-        bot.reply_to(message, f"❌ Monitor status error: {e}")
+        bot.reply_to(message, f"❌ Monitor error: {e}")
 
 @bot.message_handler(commands=["monitor_check", "force_check"])
 def cmd_force_monitor_check(message):
@@ -228,23 +307,101 @@ signal.signal(signal.SIGTERM, signal_handler)
 # --- System Information ---
 @bot.message_handler(commands=["si", "sysinfo", "system_info"])
 def cmd_sysinfo(message):
+    from universal_flags import parse_universal_flags, validate_command_flags, convert_flags_to_legacy
+    
+    def get_si_usage():
+        """Get usage message for sysinfo commands."""
+        return (
+            "⚠️ Usage: `/si` or `/si:[flags]`\n\n"
+            "📋 **Available Flags:**\n"
+            "• `brief` - Show brief system information\n"
+            "• `detailed` - Show detailed system information\n"
+            "• `network` - Show network information\n"
+            "• `storage` - Show storage information\n"
+            "• `processes` - Show running processes\n\n"
+            "📝 **Examples:**\n"
+            "• `/si` - Default system info\n"
+            "• `/si:[detailed]` - Detailed system information\n"
+            "• `/si:[network,storage]` - Network and storage info only"
+        )
+    
     try:
-        sysinfo.handle_sysinfo_command(bot, message)
+        # Handle special case where flags are in the command itself
+        command_text = message.text.strip()
+        
+        # Parse command and extract flags using universal parser
+        query, flags_list, parse_errors = parse_universal_flags(command_text, "si")
+        valid_flags, validation_errors = validate_command_flags(flags_list, "si")
+        legacy_flags = convert_flags_to_legacy(valid_flags, "si")
+        
+        # Show any flag parsing errors
+        all_errors = parse_errors + validation_errors
+        if all_errors:
+            error_msg = "⚠️ Flag parsing errors:\n" + "\n".join(f"• {err}" for err in all_errors)
+            bot.reply_to(message, error_msg)
+            # Continue processing with valid flags
+        
+        # For now, pass the detail level to the sysinfo module
+        detail_level = legacy_flags.get('detail_level', 'normal')
+        
+        # Create a modified message object with detail level info
+        if detail_level != 'normal':
+            # For now, just call the normal sysinfo and add flag info
+            sysinfo.handle_sysinfo_command(bot, message)
+            if detail_level == 'brief':
+                bot.send_message(message.chat.id, "ℹ️ Brief mode requested - showing condensed system info")
+            elif detail_level == 'detailed':
+                bot.send_message(message.chat.id, "ℹ️ Detailed mode requested - showing comprehensive system info")
+            elif detail_level in ['cpu', 'memory', 'disk', 'network']:
+                bot.send_message(message.chat.id, f"ℹ️ {detail_level.upper()}-only mode requested")
+        else:
+            sysinfo.handle_sysinfo_command(bot, message)
+        
     except Exception as e:
         bot.reply_to(message, f"❌ System info failed: {e}")
 
 # --- Downloader ---
 @bot.message_handler(commands=["dl"])
 def cmd_dl(message):
+    from universal_flags import parse_universal_flags, validate_command_flags, convert_flags_to_legacy
+    
+    def get_dl_usage():
+        """Get usage message for download commands."""
+        return (
+            "⚠️ Usage: `/dl <url>:[flags] [folder]`\n\n"
+            "📋 **Available Flags:**\n"
+            "• `force` - Force download even if file exists\n"
+            "• `notify` - Send notification when download completes\n"
+            "• `silent` - Disable notifications\n"
+            "• `background` - Download in background\n\n"
+            "📝 **Examples:**\n"
+            "• `/dl https://example.com/file.mp4:[notify]` - Download with notification\n"
+            "• `/dl https://example.com/file.mp4:[force,background]` - Force download in background\n"
+            "• `/dl https://example.com/file.mp4` - Normal download (no flags)"
+        )
+    
     try:
-        parts = message.text.split()
-        if len(parts) < 2:
-            bot.reply_to(message, "⚠️ Usage: /dl <url> [folder]")
+        # Parse command and extract flags using universal parser
+        query, flags_list, parse_errors = parse_universal_flags(message.text, "dl")
+        valid_flags, validation_errors = validate_command_flags(flags_list, "dl")
+        legacy_flags = convert_flags_to_legacy(valid_flags, "dl")
+        
+        # For download commands, the query contains "url folder", we need to extract them
+        parts = query.strip().split()
+        if not parts:
+            bot.reply_to(message, get_dl_usage(), parse_mode="Markdown")
             return
-
-        url = parts[1].strip()
-        folder = " ".join(parts[2:]).strip() if len(parts) > 2 else None
-
+        
+        url = parts[0]
+        folder = " ".join(parts[1:]).strip() if len(parts) > 1 else None
+        
+        # Show any flag parsing errors
+        all_errors = parse_errors + validation_errors
+        if all_errors:
+            error_msg = "⚠️ Flag parsing errors:\n" + "\n".join(f"• {err}" for err in all_errors)
+            bot.reply_to(message, error_msg)
+            # Continue processing with valid flags
+        
         # Auto-detect plugin
         u = url.lower()
         if "youtube.com" in u or "youtu.be" in u:
