@@ -241,22 +241,26 @@ def _get_quality_indicator(seeders: int) -> str:
 def _create_selection_markup(results: list) -> types.InlineKeyboardMarkup:
     """Create inline keyboard markup for torrent selection."""
     markup = types.InlineKeyboardMarkup()
-    button_rows = []
-    current_row = []
     
     for i, res in enumerate(results):
+        title = res.get("Title", "Unknown Title")
+        seeders = get_seeders_count(res)
+        
+        # Create long button text with title and seeds in parentheses
+        # Limit title length to avoid Telegram's button text limits
+        max_title_length = 35  # Leave room for seeds and numbering
+        if len(title) > max_title_length:
+            title = title[:max_title_length-3] + "..."
+        
+        button_text = f"{i+1}. {title} ({seeders})"
+        
         btn = types.InlineKeyboardButton(
-            f"{i+1} (🌱 {get_seeders_count(res)})", 
+            button_text,
             callback_data=f"torrent_{i}"
         )
-        current_row.append(btn)
         
-        if len(current_row) == 5 or i == len(results) - 1:
-            button_rows.append(current_row)
-            current_row = []
-    
-    for row in button_rows:
-        markup.row(*row)
+        # Each button on its own row for full width
+        markup.row(btn)
     
     return markup
 
