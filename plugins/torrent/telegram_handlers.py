@@ -23,6 +23,7 @@ from .busy_indicator import BusyIndicator
 from .search_service import SearchService
 from .qbittorrent_client import QBittorrentClient
 from .fallback_manager import FallbackManager
+from .download_monitor import get_download_monitor
 
 
 def start_search(bot, message, folder, query, rich_mode=False, all_mode=False, music_mode=False):
@@ -139,6 +140,27 @@ def handle_selection(bot, call):
 
         # Find the started torrent and send success message
         _send_download_success_message(bot, call, chosen, qbt_client, folder, save_path, download_message)
+
+        # Auto-start download monitor if not already running (and if enabled)
+        if config.AUTO_START_MONITOR:
+            try:
+                monitor = get_download_monitor()
+                if not monitor.is_running():
+                    # Get the bot callback function to send notifications
+                    def notification_callback(message):
+                        try:
+                            # Send notification to the user who initiated the download
+                            bot.send_message(call.message.chat.id, message)
+                        except Exception as e:
+                            print(f"Failed to send notification: {e}")
+                    
+                    monitor.start(notification_callback)
+                    bot.send_message(call.message.chat.id, "🔔 Download monitor started automatically - you'll get notified when downloads complete!")
+                else:
+                    print("Monitor already running, skipping auto-start")
+            except Exception as e:
+                print(f"Failed to auto-start monitor: {e}")
+                # Don't fail the download if monitor can't start
 
         # Update downloads.txt
         qbt_client.update_downloads_txt()

@@ -48,6 +48,9 @@ class TorrentConfig:
     MUSIC_MODE_LIMIT = int(os.getenv("MUSIC_MODE_LIMIT", "12"))  # Music-focused results
     MUSIC_MODE_TIMEOUT = int(os.getenv("MUSIC_MODE_TIMEOUT", "15"))  # Medium timeout for music search
     
+    # Download monitor settings
+    AUTO_START_MONITOR = os.getenv("AUTO_START_MONITOR", "true").lower() == "true"  # Auto-start monitor on downloads
+    
     # All available indexers for ALL mode (comprehensive list)
     ALL_INDEXERS = [
         # 🎬 Movies & TV

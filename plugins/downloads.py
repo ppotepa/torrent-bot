@@ -25,7 +25,7 @@ def _human_size(n: int | float | None) -> str:
 
 def _eta(sec: int | None) -> str:
     if sec is None or sec < 0 or sec > 365*24*3600:
-        return "—"
+        return ""
     m, s = divmod(int(sec), 60)
     h, m = divmod(m, 60)
     d, h = divmod(h, 24)
@@ -36,15 +36,15 @@ def _eta(sec: int | None) -> str:
 
 def _state_icon(state: str) -> str:
     s = (state or "").lower()
-    if "error" in s: return "❌"
-    if "paused" in s: return "⏸️"
-    if "stalled" in s: return "💤"
-    if "upload" in s or "seeding" in s: return "⬆️"
-    if "queued" in s: return "⏳"
-    if "checking" in s: return "🔎"
-    if "meta" in s: return "📦"
-    if "down" in s: return "⬇️"
-    return "•"
+    if "error" in s: return ""
+    if "paused" in s: return ""
+    if "stalled" in s: return ""
+    if "upload" in s or "seeding" in s: return ""
+    if "queued" in s: return ""
+    if "checking" in s: return ""
+    if "meta" in s: return ""
+    if "down" in s: return ""
+    return ""
 
 def _connect_qbt():
     try:
@@ -119,10 +119,10 @@ def _load_torrents(filter_key: str | None):
 def _build_page_text(items, page: int, filter_key: str | None):
     total = len(items)
     if total == 0:
-        return "📥 No torrents found."
+        return " No torrents found."
     start = page * PAGE_SIZE
     end = min(start + PAGE_SIZE, total)
-    hdr = f"📥 qBittorrent downloads — {total} total"
+    hdr = f" qBittorrent downloads  {total} total"
     if filter_key:
         hdr += f" (filter: {filter_key})"
     lines = [hdr]
@@ -132,10 +132,10 @@ def _build_page_text(items, page: int, filter_key: str | None):
         icon = _state_icon(it["state"])
         line = (
             f"\n{idx}. {icon} {it['name']}\n"
-            f"   • {it['state']} ({pct})\n"
-            f"   • ↓ {_human_size(it['dlspeed'])}/s  ↑ {_human_size(it['upspeed'])}/s  | ETA {_eta(it['eta'])}\n"
-            f"   • {_human_size(it['completed'])} / {_human_size(it['size'])}\n"
-            f"   • {it['save_path']}"
+            f"    {it['state']} ({pct})\n"
+            f"     {_human_size(it['dlspeed'])}/s   {_human_size(it['upspeed'])}/s  | ETA {_eta(it['eta'])}\n"
+            f"    {_human_size(it['completed'])} / {_human_size(it['size'])}\n"
+            f"    {it['save_path']}"
         )
         lines.append(line)
     return "\n".join(lines)
@@ -146,12 +146,39 @@ def _pagination_markup(total: int, page: int):
     markup = types.InlineKeyboardMarkup()
     buttons = []
     if page > 0:
-        buttons.append(types.InlineKeyboardButton("⬅️ Prev", callback_data=f"dlpage:{page-1}"))
+        buttons.append(types.InlineKeyboardButton(" Prev", callback_data=f"dlpage:{page-1}"))
     if (page + 1) * PAGE_SIZE < total:
-        buttons.append(types.InlineKeyboardButton("Next ➡️", callback_data=f"dlpage:{page+1}"))
+        buttons.append(types.InlineKeyboardButton("Next ", callback_data=f"dlpage:{page+1}"))
     if buttons:
         markup.row(*buttons)
     return markup
+
+def _delete_completed_torrents():
+    """Delete all fully completed torrents from qBittorrent."""
+    client = _connect_qbt()
+    tors = client.torrents_info()
+    
+    deleted_count = 0
+    deleted_names = []
+    
+    for t in tors:
+        progress = float(getattr(t, "progress", 0.0))  # 0..1
+        state = getattr(t, "state", "").lower()
+        name = getattr(t, "name", "(no name)")
+        hash_value = getattr(t, "hash", "")
+        
+        # Consider torrent completed if progress is 100% 
+        if progress >= 0.999:  # Use 0.999 to account for floating point precision
+            try:
+                # Delete torrent and its files
+                client.torrents_delete(delete_files=True, torrent_hashes=hash_value)
+                deleted_count += 1
+                deleted_names.append(name)
+                print(f" Deleted completed torrent: {name}")
+            except Exception as e:
+                print(f" Failed to delete torrent {name}: {e}")
+    
+    return deleted_count, deleted_names
 
 # ---------- exposed API ----------
 def show(bot, message):
@@ -159,6 +186,27 @@ def show(bot, message):
     try:
         parts = message.text.strip().split(" ", 1)
         filter_key = parts[1].strip() if len(parts) > 1 else None
+
+        # Handle special "clear" command
+        if filter_key and filter_key.lower() == "clear":
+            bot.send_message(message.chat.id, " Clearing all completed torrents...")
+            
+            deleted_count, deleted_names = _delete_completed_torrents()
+            
+            if deleted_count == 0:
+                response = " No completed torrents to clear."
+            else:
+                response = f" Successfully cleared {deleted_count} completed torrent(s):\n\n"
+                # Show first few names, truncate if too many
+                shown_names = deleted_names[:5]
+                for name in shown_names:
+                    response += f" {name}\n"
+                
+                if len(deleted_names) > 5:
+                    response += f"\n... and {len(deleted_names) - 5} more"
+            
+            bot.send_message(message.chat.id, response)
+            return
 
         items = _load_torrents(filter_key)
         _cache[message.chat.id] = {"items": items, "page": 0, "filter": filter_key}
@@ -168,7 +216,7 @@ def show(bot, message):
         bot.send_message(message.chat.id, text, reply_markup=markup)
 
     except Exception as e:
-        bot.reply_to(message, f"❌ Downloads error: {e}")
+        bot.reply_to(message, f" Downloads error: {e}")
 
 def handle_page(bot, call):
     """Handle inline pagination callback"""
