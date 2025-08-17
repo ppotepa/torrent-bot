@@ -53,6 +53,8 @@ This bot requires the following services to be running in **separate containers*
 
 ### Docker Compose Configuration
 
+**⚠️ Security Note**: Never commit real credentials to version control. Use environment variables or .env files.
+
 ```yaml
 version: "3.8"
 
@@ -63,11 +65,11 @@ services:
     restart: unless-stopped
     environment:
       # Telegram Bot Configuration
-      TELEGRAM_BOT_TOKEN: "YOUR_BOT_TOKEN_HERE"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
 
       # Jackett Configuration (running in separate container)
       JACKETT_URL: "http://jackett:9117"
-      JACKETT_API_KEY: "YOUR_JACKETT_API_KEY"
+      JACKETT_API_KEY: "${JACKETT_API_KEY}"
       
       # 🔥 Popular indexers (must be configured in Jackett)
       JACKETT_INDEXERS: "yts,nyaa,eztv,1337x,torrentgalaxy,thepiratebay,torlock,limetorrents,glodls,bitsearch,torrentfunk,magnetdl,yourbittorrent,zooqle,torrentdownloads,linuxtracker,anidex,animetosho,idope,ettv"
@@ -81,8 +83,8 @@ services:
       # qBittorrent Configuration
       QBIT_HOST: "qbittorrent"
       QBIT_PORT: "8080"
-      QBIT_USER: "admin"
-      QBIT_PASS: "adminadmin"
+      QBIT_USER: "${QBIT_USER:-admin}"
+      QBIT_PASS: "${QBIT_PASS:-adminadmin}"
 
       # Enhanced Features
       ENABLE_AGGRESSIVE_FALLBACK: "true"
@@ -90,7 +92,7 @@ services:
       RICH_MODE_LIMIT: "15"
       RICH_MODE_TIMEOUT: "20"
     volumes:
-      - "/path/to/your/media:/app/downloads"
+      - "${DOWNLOAD_PATH:-./downloads}:/app/downloads"
     depends_on:
       - qbittorrent
       - flaresolverr
@@ -106,15 +108,15 @@ services:
       - PGID=1000
       - TZ=Europe/Warsaw
       - WEBUI_PORT=8080
-      - QBT_WEBUI_USERNAME=admin
-      - QBT_WEBUI_PASSWORD=adminadmin
+      - QBT_WEBUI_USERNAME=${QBIT_USER:-admin}
+      - QBT_WEBUI_PASSWORD=${QBIT_PASS:-adminadmin}
     ports:
       - "8080:8080"
       - "6881:6881"
       - "6881:6881/udp"
     volumes:
-      - "/path/to/your/media:/downloads"
-      - "/path/to/qbittorrent-config:/config"
+      - "${DOWNLOAD_PATH:-./downloads}:/downloads"
+      - "${QBIT_CONFIG_PATH:-./qbittorrent-config}:/config"
     networks:
       - zerotier
 
@@ -174,12 +176,46 @@ jackett:
 ## 🚀 Quick Start
 
 1. **Set up external containers** (ZeroTier and Jackett)
-2. **Configure Jackett** with your preferred indexers
-3. **Update environment variables** in docker-compose.yaml
-4. **Start the bot**:
+2. **Configure environment variables**:
+   ```bash
+   # Copy the example environment file
+   cp .env.example .env
+   
+   # Edit .env with your actual values
+   nano .env
+   ```
+3. **Required Environment Variables**:
+   - `TELEGRAM_BOT_TOKEN` - Get from @BotFather on Telegram
+   - `JACKETT_API_KEY` - Get from Jackett web interface
+   - `QBIT_USER` and `QBIT_PASS` - qBittorrent credentials
+   - `DOWNLOAD_PATH` - Path where downloads will be stored
+4. **Configure Jackett** with your preferred indexers
+5. **Start the bot**:
    ```bash
    docker-compose up -d
    ```
+
+### 🔒 Environment Configuration
+
+Create a `.env` file in the project root with your configuration:
+
+```bash
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+
+# Jackett Configuration  
+JACKETT_API_KEY=your_jackett_api_key_here
+
+# qBittorrent Configuration
+QBIT_USER=admin
+QBIT_PASS=your_secure_password_here
+
+# File Paths
+DOWNLOAD_PATH=/path/to/your/downloads
+QBIT_CONFIG_PATH=/path/to/qbittorrent/config
+```
+
+**⚠️ Important**: Never commit your `.env` file to version control!
 
 ## 📱 Usage Commands
 

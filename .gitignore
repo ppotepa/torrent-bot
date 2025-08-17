@@ -3,6 +3,13 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# Security: Environment files with sensitive data
+.env
+.env.local
+.env.production
+*.key
+*.pem
+
 # User-specific files
 *.rsuser
 *.suo
@@ -360,4 +367,5 @@ MigrationBackup/
 .ionide/
 
 # Fody - auto-generated XML schema
-FodyWeavers.xsd
+FodyWeavers.xsdqbittorrent-config/
+**/qbittorrent-config/

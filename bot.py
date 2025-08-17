@@ -2,6 +2,14 @@ import os
 import telebot
 from telebot import types  # noqa
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Loaded environment variables from .env file")
+except ImportError:
+    print("⚠️ python-dotenv not installed, using system environment variables only")
+
 # import plugins
 from plugins import youtube, facebook, torrent, downloads, sysinfo
 
