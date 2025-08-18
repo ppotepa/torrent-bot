@@ -29,8 +29,7 @@ services:
     volumes:
       - "${DOWNLOAD_PATH:-./downloads}:/app/downloads"
     depends_on:
-      - qbittorrent
-      - flaresolverr
+      - qbittorrent      
     networks:
       - zerotier
 
@@ -52,18 +51,6 @@ services:
     volumes:
       - "${DOWNLOAD_PATH:-./downloads}:/downloads"
       - "${QBIT_CONFIG_PATH:-./qbittorrent-config}:/config"
-    networks:
-      - zerotier
-
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    restart: unless-stopped
-    environment:
-      - LOG_LEVEL=info
-      - TZ=Europe/Warsaw
-    ports:
-      - "8191:8191"    # FlareSolverr Web API
     networks:
       - zerotier
 

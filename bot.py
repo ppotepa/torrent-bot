@@ -23,7 +23,7 @@ from plugins.torrent.download_monitor import start_download_monitoring, stop_dow
 
 # import notification system
 from notification_system import initialize_notification_manager, get_notification_manager
-from plugins.torrent.notification_handler import get_torrent_notification_manager
+from plugins.torrent.notification_handler import get_torrent_notification_manager, initialize_torrent_notification_manager
 
 # --- Token ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -40,6 +40,9 @@ logger.log_system_info(
     "Notification system initialized", 
     {"default_chat_id": default_chat_id}
 )
+
+# Initialize torrent notification manager
+torrent_notification_manager = initialize_torrent_notification_manager(notification_manager)
 
 # Initialize torrent notification monitoring
 torrent_manager = get_torrent_notification_manager()
@@ -60,14 +63,14 @@ def send_download_notification(message_text: str):
             logger.warning("No ADMIN_USER_ID configured, cannot send notifications")
             logger.debug(f"Would send: {message_text[:100]}...")
     except Exception as e:
-        logger.error("Error sending download notification", e)
+        logger.error("Error sending download notification", {"error": str(e)})
 
 # Start download monitoring
 try:
     start_download_monitoring(send_download_notification)
     logger.log_system_info("download_monitor", "Download completion monitoring started")
 except Exception as e:
-    logger.error("Could not start download monitoring", e)
+    logger.error("Could not start download monitoring", {"error": str(e)})
 
 # --- Welcome & Help ---
 @bot.message_handler(commands=["start", "help"])
@@ -80,14 +83,15 @@ def send_welcome(message):
         "   Examples:\n"
         "   ◦ /dl https://youtube.com/watch?v=123:[audio] music — Audio track only (MP3)\n"
         "   ◦ /dl https://youtube.com/watch?v=123 videos — Full video with audio (MP4)\n"
-        "• /ab [query]:[flags] — convert files to audiobooks (MP3)\n"
+        "• /ab [query]:[flags] — convert files to audiobooks with premium OpenVoice TTS\n"
         "   Format: [text], [pdf], [epub], [inline] | Language: [eng], [polish]\n"
-        "   Engine: [elevenlabs], [gtts], [pyttsx3] | Voice: [male], [female], [british], [young]\n"
+        "   Engine: [openvoice], [enhanced_sapi], [gtts], [pyttsx3] (auto=OpenVoice priority)\n"
+        "   Voice: [male], [female], [british], [young]\n"
         "   Examples:\n"
-        "   ◦ /ab my book:[text,eng] — Convert text file to English audiobook\n"
-        "   ◦ /ab document:[pdf,polish,elevenlabs] — PDF with ElevenLabs TTS\n"
-        "   ◦ /ab novel:[epub,eng,elevenlabs,female] — EPUB with female voice\n"
-        "   ◦ /ab Your text here:[inline,eng,elevenlabs] — Direct text conversion\n"
+        "   ◦ /ab Hello world — Auto OpenVoice with English female voice\n"
+        "   ◦ /ab Witaj świecie:[pl,male] — Polish male voice (auto-detects OpenVoice)\n"
+        "   ◦ /ab document.pdf:[pdf,eng,british] — PDF with British accent\n"
+        "   ◦ /ab book.epub:[epub,polish,openvoice] — EPUB with premium OpenVoice\n"
         "• /t <query>:[flags] — search torrents via Jackett\n"
         "   Flags: [all], [rich], [music], [notify], [silent]\n"
         "   Examples:\n"
@@ -574,43 +578,36 @@ def handle_downloads_pagination(call):
 @bot.message_handler(commands=["ab", "audiobook"])
 def handle_audiobook(message):
     try:
-        logger.log_command_start(
-            user_id=message.from_user.id,
-            command=message.text,
-            params={
+        logger.log_system_info(
+            component="audiobook_command",
+            message=f"User {message.from_user.id} executed audiobook command",
+            details={
                 'chat_id': message.chat.id,
                 'username': getattr(message.from_user, 'username', 'unknown'),
+                'command': message.text,
                 'text_length': len(message.text)
             }
         )
         
-        audiobook.handle_command(bot, message)
+        # Use the new audiobook command handler
+        audiobook.handle_audiobook_command(message, bot)
         
-        logger.log_command_success(
-            user_id=message.from_user.id,
-            command=message.text.split()[0],  # Just the command part
-            result={'status': 'completed'}
-        )
+        logger.info(f"Audiobook command completed successfully for user {message.from_user.id}")
         
     except Exception as e:
-        logger.log_audiobook_error(
-            user_id=message.from_user.id,
-            command=message.text,
-            error=e,
-            context={
-                'chat_id': message.chat.id,
-                'username': getattr(message.from_user, 'username', 'unknown'),
-                'text_length': len(message.text),
-                'handler': 'bot.handle_audiobook'
-            }
-        )
+        logger.error(f"Audiobook command failed: {e}", {
+            'user_id': message.from_user.id,
+            'command': message.text,
+            'error': str(e),
+            'chat_id': message.chat.id
+        })
         
         bot.reply_to(
             message, 
-            f"❌ TTS conversion failed. Please try again.\n"
-            f"🔧 Error ID: {str(e)[:50]}...\n"
-            f"💡 Try basic TTS: `/ab your text --pyttsx3`\n"
-            f"📋 If issue persists, check Docker logs for details"
+            f"❌ Audiobook conversion failed. Please try again.\n"
+            f"🔧 Error: {str(e)[:100]}...\n"
+            f"💡 Try: `/ab your text` (uses OpenVoice by default)\n"
+            f"📋 For help: `/ab` without text"
         )
 
 # --- Fallback: echo links ---
@@ -628,7 +625,12 @@ def handle_links(message):
 # --- Document handler for audiobook conversion ---
 @bot.message_handler(content_types=['document'])
 def handle_document_upload(message):
-    audiobook.handle_document(bot, message)
+    """Handle document uploads for audiobook conversion"""
+    try:
+        audiobook.handle_audiobook_file(message, bot)
+    except Exception as e:
+        logger.error(f"Document handler error: {e}")
+        bot.reply_to(message, f"❌ Error processing document: {e}")
 
 # --- Run bot ---
 if __name__ == "__main__":

@@ -1,0 +1,54 @@
+# Git and version control
+.git
+.gitignore
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+logs/
+*.log
+
+# Test files
+test_*
+*_test.py
+pytest.ini
+.pytest_cache/
+
+# Documentation
+*.md
+!README.md
+
+# Audio files (can be large)
+*.mp3
+*.wav
+*.m4a
+audiobooks/
+downloads/
+
+# Temporary files
+*.tmp
+*.temp

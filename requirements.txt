@@ -1,0 +1,28 @@
+﻿# Core Bot Dependencies
+pyTelegramBotAPI==4.14.0
+python-dotenv==1.0.0
+
+# TTS Dependencies
+gtts==2.4.0
+pyttsx3==2.90
+
+# OpenVoice Dependencies (optional - for premium TTS)
+torch>=1.13.0
+torchaudio>=0.13.0
+
+# Audio Processing
+yt-dlp>=2023.12.30
+
+# System Dependencies (Windows specific - optional in Docker)
+pywin32==306; sys_platform == "win32"
+
+# Data Processing
+requests==2.31.0
+
+# Additional potential dependencies
+qbittorrent-api>=2025.7.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Development/Testing
+pytest==7.4.3
