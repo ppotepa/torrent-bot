@@ -3,13 +3,17 @@ import time
 import telebot
 from telebot import types  # noqa
 
+# Enhanced logging system for Docker
+from enhanced_logging import get_logger
+logger = get_logger("torrent-bot")
+
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
     load_dotenv()
-    print("✅ Loaded environment variables from .env file")
+    logger.info("Loaded environment variables from .env file")
 except ImportError:
-    print("⚠️ python-dotenv not installed, using system environment variables only")
+    logger.warning("python-dotenv not installed, using system environment variables only")
 
 # import plugins
 from plugins import youtube, facebook, torrent, downloads, sysinfo, audiobook
@@ -31,12 +35,16 @@ bot = telebot.TeleBot(TOKEN)
 admin_user_id = os.getenv("ADMIN_USER_ID", "").strip()
 default_chat_id = int(admin_user_id) if admin_user_id else None
 notification_manager = initialize_notification_manager(bot, default_chat_id)
-print(f"📨 Notification system initialized (default chat: {default_chat_id})")
+logger.log_system_info(
+    "notification_system", 
+    "Notification system initialized", 
+    {"default_chat_id": default_chat_id}
+)
 
 # Initialize torrent notification monitoring
 torrent_manager = get_torrent_notification_manager()
 torrent_manager.start_monitoring()
-print("🔍 Torrent notification monitoring started")
+logger.log_system_info("torrent_monitor", "Torrent notification monitoring started")
 
 # Notification function for download completions (legacy compatibility)
 def send_download_notification(message_text: str):
@@ -47,19 +55,19 @@ def send_download_notification(message_text: str):
         
         if admin_user_id:
             bot.send_message(admin_user_id, message_text, parse_mode="Markdown")
-            print(f"📨 Sent notification to admin user: {admin_user_id}")
+            logger.info(f"Sent notification to admin user: {admin_user_id}")
         else:
-            print("⚠️ No ADMIN_USER_ID configured, cannot send notifications")
-            print(f"📋 Would send: {message_text[:100]}...")
+            logger.warning("No ADMIN_USER_ID configured, cannot send notifications")
+            logger.debug(f"Would send: {message_text[:100]}...")
     except Exception as e:
-        print(f"❌ Error sending download notification: {e}")
+        logger.error("Error sending download notification", e)
 
 # Start download monitoring
 try:
     start_download_monitoring(send_download_notification)
-    print("🔍 Download completion monitoring started")
+    logger.log_system_info("download_monitor", "Download completion monitoring started")
 except Exception as e:
-    print(f"⚠️ Could not start download monitoring: {e}")
+    logger.error("Could not start download monitoring", e)
 
 # --- Welcome & Help ---
 @bot.message_handler(commands=["start", "help"])
@@ -72,11 +80,14 @@ def send_welcome(message):
         "   Examples:\n"
         "   ◦ /dl https://youtube.com/watch?v=123:[audio] music — Audio track only (MP3)\n"
         "   ◦ /dl https://youtube.com/watch?v=123 videos — Full video with audio (MP4)\n"
-        "• /ab <format>:<language> — convert files to audiobooks (MP3)\n"
-        "   Formats: text, pdf, epub | Languages: eng, polish\n"
+        "• /ab [query]:[flags] — convert files to audiobooks (MP3)\n"
+        "   Format: [text], [pdf], [epub], [inline] | Language: [eng], [polish]\n"
+        "   Engine: [elevenlabs], [gtts], [pyttsx3] | Voice: [male], [female], [british], [young]\n"
         "   Examples:\n"
-        "   ◦ /ab text:eng — Convert text file to English audiobook\n"
-        "   ◦ /ab pdf:polish — Convert PDF to Polish audiobook\n"
+        "   ◦ /ab my book:[text,eng] — Convert text file to English audiobook\n"
+        "   ◦ /ab document:[pdf,polish,elevenlabs] — PDF with ElevenLabs TTS\n"
+        "   ◦ /ab novel:[epub,eng,elevenlabs,female] — EPUB with female voice\n"
+        "   ◦ /ab Your text here:[inline,eng,elevenlabs] — Direct text conversion\n"
         "• /t <query>:[flags] — search torrents via Jackett\n"
         "   Flags: [all], [rich], [music], [notify], [silent]\n"
         "   Examples:\n"
@@ -562,7 +573,45 @@ def handle_downloads_pagination(call):
 # --- Audiobook converter (/ab) ---
 @bot.message_handler(commands=["ab", "audiobook"])
 def handle_audiobook(message):
-    audiobook.handle_command(bot, message)
+    try:
+        logger.log_command_start(
+            user_id=message.from_user.id,
+            command=message.text,
+            params={
+                'chat_id': message.chat.id,
+                'username': getattr(message.from_user, 'username', 'unknown'),
+                'text_length': len(message.text)
+            }
+        )
+        
+        audiobook.handle_command(bot, message)
+        
+        logger.log_command_success(
+            user_id=message.from_user.id,
+            command=message.text.split()[0],  # Just the command part
+            result={'status': 'completed'}
+        )
+        
+    except Exception as e:
+        logger.log_audiobook_error(
+            user_id=message.from_user.id,
+            command=message.text,
+            error=e,
+            context={
+                'chat_id': message.chat.id,
+                'username': getattr(message.from_user, 'username', 'unknown'),
+                'text_length': len(message.text),
+                'handler': 'bot.handle_audiobook'
+            }
+        )
+        
+        bot.reply_to(
+            message, 
+            f"❌ TTS conversion failed. Please try again.\n"
+            f"🔧 Error ID: {str(e)[:50]}...\n"
+            f"💡 Try basic TTS: `/ab your text --pyttsx3`\n"
+            f"📋 If issue persists, check Docker logs for details"
+        )
 
 # --- Fallback: echo links ---
 @bot.message_handler(func=lambda m: m.text and ("http://" in m.text or "https://" in m.text))
@@ -583,5 +632,17 @@ def handle_document_upload(message):
 
 # --- Run bot ---
 if __name__ == "__main__":
-    print("🤖 Bot started...")
-    bot.infinity_polling()
+    import sys
+    
+    logger.log_system_info("startup", "Bot starting up", {
+        "python_version": sys.version.split()[0],
+        "bot_token_configured": bool(TOKEN),
+        "admin_user_configured": bool(admin_user_id)
+    })
+    
+    try:
+        logger.log_system_info("startup", "Bot started successfully - ready to receive commands")
+        bot.infinity_polling()
+    except Exception as e:
+        logger.critical("Bot crashed during polling", e)
+        raise

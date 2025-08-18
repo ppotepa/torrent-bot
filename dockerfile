@@ -2,8 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install ffmpeg and curl
-RUN apt-get update && apt-get install -y ffmpeg curl && rm -rf /var/lib/apt/lists/*
+# Install ffmpeg, curl, and TTS dependencies
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    curl \
+    espeak \
+    espeak-data \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install requirements
 COPY requirements.txt .
