@@ -125,8 +125,8 @@ def validate_command_flags(flags_list: List[str], command_name: str) -> Tuple[Li
         't': ['all', 'rich', 'music', 'notify', 'silent', 'cache', 'nocache'],
         'torrent': ['all', 'rich', 'music', 'notify', 'silent', 'cache', 'nocache'],
         'torrents': ['all', 'rich', 'music', 'notify', 'silent', 'cache', 'nocache'],
-        'dl': ['force', 'notify', 'silent', 'background'],
-        'd': ['force', 'notify', 'silent'],
+        'dl': ['force', 'notify', 'silent', 'background', 'audio'],
+        'd': ['force', 'notify', 'silent', 'audio'],
         'si': ['detailed', 'brief', 'cpu', 'memory', 'disk', 'network'],
         'sysinfo': ['detailed', 'brief', 'cpu', 'memory', 'disk', 'network'],
         'system_info': ['detailed', 'brief', 'cpu', 'memory', 'disk', 'network'],
@@ -193,7 +193,8 @@ def convert_flags_to_legacy(flags_list: List[str], command_name: str) -> Dict[st
         result = {
             'force': 'force' in flags_list,
             'notify': 'notify' in flags_list and 'silent' not in flags_list,
-            'background': 'background' in flags_list
+            'background': 'background' in flags_list,
+            'audio': 'audio' in flags_list
         }
     elif command_name in ['si', 'sysinfo', 'system_info']:
         # Determine detail level

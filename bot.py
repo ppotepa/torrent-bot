@@ -12,7 +12,7 @@ except ImportError:
     print("⚠️ python-dotenv not installed, using system environment variables only")
 
 # import plugins
-from plugins import youtube, facebook, torrent, downloads, sysinfo
+from plugins import youtube, facebook, torrent, downloads, sysinfo, audiobook
 
 # import download monitor
 from plugins.torrent.download_monitor import start_download_monitoring, stop_download_monitoring, get_download_monitor
@@ -68,8 +68,15 @@ def send_welcome(message):
         "👋 Welcome to the Media Bot!\n\n"
         "Available commands:\n"
         "• /dl <url>:[flags] [folder] — download from YouTube or Facebook\n"
-        "   Flags: [force], [notify], [silent], [background]\n"
-        "   Example: /dl https://youtube.com/watch?v=123:[notify,background]\n"
+        "   Flags: [force], [notify], [silent], [background], [audio]\n"
+        "   Examples:\n"
+        "   ◦ /dl https://youtube.com/watch?v=123:[audio] music — Audio track only (MP3)\n"
+        "   ◦ /dl https://youtube.com/watch?v=123 videos — Full video with audio (MP4)\n"
+        "• /ab <format>:<language> — convert files to audiobooks (MP3)\n"
+        "   Formats: text, pdf, epub | Languages: eng, polish\n"
+        "   Examples:\n"
+        "   ◦ /ab text:eng — Convert text file to English audiobook\n"
+        "   ◦ /ab pdf:polish — Convert PDF to Polish audiobook\n"
         "• /t <query>:[flags] — search torrents via Jackett\n"
         "   Flags: [all], [rich], [music], [notify], [silent]\n"
         "   Examples:\n"
@@ -499,11 +506,13 @@ def cmd_dl(message):
             "• `force` - Force download even if file exists\n"
             "• `notify` - Send notification when download completes\n"
             "• `silent` - Disable notifications\n"
-            "• `background` - Download in background\n\n"
+            "• `background` - Download in background\n"
+            "• `audio` - Download audio track only (YouTube/video content)\n\n"
             "📝 **Examples:**\n"
-            "• `/dl https://example.com/file.mp4:[notify]` - Download with notification\n"
-            "• `/dl https://example.com/file.mp4:[force,background]` - Force download in background\n"
-            "• `/dl https://example.com/file.mp4` - Normal download (no flags)"
+            "• `/dl https://youtube.com/watch?v=123:[audio]` - Audio track only (MP3)\n"
+            "• `/dl https://youtube.com/watch?v=123` - Full video with audio (MP4)\n"
+            "• `/dl https://youtube.com/watch?v=123:[notify,audio] music` - Audio download with notification\n"
+            "• `/dl https://example.com/file.mp4:[force,background]` - Force download in background"
         )
     
     try:
@@ -550,6 +559,11 @@ def handle_downloads(message):
 def handle_downloads_pagination(call):
     downloads.handle_page(bot, call)
 
+# --- Audiobook converter (/ab) ---
+@bot.message_handler(commands=["ab", "audiobook"])
+def handle_audiobook(message):
+    audiobook.handle_command(bot, message)
+
 # --- Fallback: echo links ---
 @bot.message_handler(func=lambda m: m.text and ("http://" in m.text or "https://" in m.text))
 def handle_links(message):
@@ -561,6 +575,11 @@ def handle_links(message):
         facebook.download(bot, message, url, None)
     else:
         bot.reply_to(message, f"❌ No plugin available for this URL: {url}")
+
+# --- Document handler for audiobook conversion ---
+@bot.message_handler(content_types=['document'])
+def handle_document_upload(message):
+    audiobook.handle_document(bot, message)
 
 # --- Run bot ---
 if __name__ == "__main__":
