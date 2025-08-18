@@ -118,6 +118,35 @@ class QBittorrentClient:
                 if candidates:
                     return max(candidates, key=lambda t: getattr(t, "added_on", 0) or 0)
             return max(ts, key=lambda t: getattr(t, "added_on", 0) or 0)
+        except Exception as e:
+            print(f"❌ Error finding torrent: {e}")
+            return None
+    
+    def get_all_torrents(self):
+        """Get all torrents as dictionaries for monitoring."""
+        try:
+            client = self.get_client()
+            torrents = client.torrents_info()
+            
+            # Convert torrent objects to dictionaries
+            result = []
+            for torrent in torrents:
+                result.append({
+                    'hash': getattr(torrent, 'hash', ''),
+                    'name': getattr(torrent, 'name', ''),
+                    'state': getattr(torrent, 'state', ''),
+                    'progress': getattr(torrent, 'progress', 0),
+                    'size': getattr(torrent, 'size', 0),
+                    'downloaded': getattr(torrent, 'downloaded', 0),
+                    'save_path': getattr(torrent, 'save_path', ''),
+                    'added_on': getattr(torrent, 'added_on', 0),
+                    'completion_on': getattr(torrent, 'completion_on', 0),
+                })
+            
+            return result
+        except Exception as e:
+            print(f"❌ Error getting torrents: {e}")
+            return []
         except Exception:
             return None
     

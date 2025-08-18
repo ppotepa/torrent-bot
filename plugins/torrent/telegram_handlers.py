@@ -24,6 +24,7 @@ from .search_service import SearchService
 from .qbittorrent_client import QBittorrentClient
 from .fallback_manager import FallbackManager
 from .download_monitor import get_download_monitor
+from .result_formatter import format_torrent_results, create_summary_message, get_enhanced_usage_message
 
 
 def start_search(bot, message, folder, query, rich_mode=False, all_mode=False, music_mode=False, notify=False):
@@ -80,21 +81,151 @@ def start_search(bot, message, folder, query, rich_mode=False, all_mode=False, m
 
         # Cache results for user selection
         user_id = message.from_user.id
-        search_service.cache_results(user_id, results, folder, rich_mode, all_mode, music_mode, notify)
+        
+        # Format results with media information
+        formatted_results = format_torrent_results(results)
+        
+        # Cache the formatted results
+        search_service.cache_results(user_id, formatted_results, folder, rich_mode, all_mode, music_mode, notify)
 
-        # Generate search results message
-        search_mode_label = _get_search_mode_label(rich_mode, all_mode, music_mode, len(results))
-        result_msg = _format_search_results(results, search_mode_label, rich_mode, all_mode, music_mode)
+        # Generate enhanced search results message with numbered list
+        search_mode_label = _get_search_mode_label(rich_mode, all_mode, music_mode, len(formatted_results))
+        result_msg = create_summary_message(formatted_results, query, search_mode_label)
         
-        # Create selection buttons
-        markup = _create_selection_markup(results)
-        
-        bot.send_message(message.chat.id, result_msg, reply_markup=markup)
+        # Send message without buttons - users will type numbers
+        try:
+            bot.send_message(message.chat.id, result_msg, parse_mode='Markdown')
+        except Exception as telegram_error:
+            # If Markdown parsing fails, send as plain text
+            print(f"⚠️ Markdown parsing failed, sending as plain text: {telegram_error}")
+            # Remove markdown formatting and send plain text
+            plain_msg = result_msg.replace('**', '').replace('`', '').replace('_', '')
+            bot.send_message(message.chat.id, f"⚠️ Results (plain text due to formatting issue):\n\n{plain_msg}")
 
     except Exception as e:
         BusyIndicator.remove(bot, message)
         bot.reply_to(message, f"❌ Torrent search error: {e}")
         print(f"Error in start_search: {e}")  # Log for debugging
+
+
+def handle_direct_selection(bot, message, selected_result, user_id, cache_data):
+    """Handle direct torrent selection from numbered input (no callback query)."""
+    try:
+        # Get cached data
+        results = cache_data["results"]
+        folder = cache_data["folder"]
+        notify = cache_data.get("notify", False)
+
+        title = selected_result.get("Title", "Unknown Title")
+
+        # Initialize clients
+        qbt_client = QBittorrentClient()
+        search_service = SearchService()
+        fallback_manager = FallbackManager(qbt_client, search_service.jackett_client)
+
+        save_path = config.QBIT_SAVE_ROOT if not folder else f"{config.QBIT_SAVE_ROOT}/{folder}"
+        
+        # Try to download the torrent
+        download_success, download_message = _attempt_download(selected_result, qbt_client, fallback_manager, save_path, message)
+        
+        if not download_success:
+            bot.send_message(message.chat.id, f"❌ Failed to download: {title}\n{download_message}")
+            return
+
+        # Send intermediate message about fallback methods if magnet failed
+        magnet = selected_result.get("MagnetUri")
+        if not magnet or "Downloaded via magnet link" not in download_message:
+            bot.send_message(message.chat.id, f"🔄 Trying alternative download methods for: {title}")
+
+        # Find the started torrent and send success message
+        _send_download_success_message_direct(bot, message, selected_result, qbt_client, folder, save_path, download_message)
+
+        # Handle notify flag - register for completion notification
+        if notify:
+            try:
+                from .notification_handler import register_torrent_for_notification
+                
+                # Get torrent hash for notification tracking
+                infohash = extract_infohash_from_magnet(magnet) if magnet else None
+                
+                if infohash:
+                    # Primary method: Track by hash
+                    register_torrent_for_notification(
+                        torrent_hash=infohash,
+                        torrent_name=title,
+                        user_id=user_id,
+                        chat_id=message.chat.id,
+                        additional_info={
+                            'tracker': selected_result.get("Tracker", ""),
+                            'size': selected_result.get("Size", 0),
+                            'folder': folder,
+                            'save_path': save_path
+                        }
+                    )
+                    bot.send_message(message.chat.id, f"🔔 Notification registered! You'll be notified when '{title}' completes.")
+                else:
+                    # Alternative method: Track by name when hash unavailable
+                    try:
+                        from .notification_handler import register_torrent_by_name
+                        register_torrent_by_name(
+                            torrent_name=title,
+                            user_id=user_id,
+                            chat_id=message.chat.id,
+                            additional_info={
+                                'tracker': selected_result.get("Tracker", ""),
+                                'size': selected_result.get("Size", 0),
+                                'folder': folder,
+                                'save_path': save_path
+                            }
+                        )
+                        bot.send_message(message.chat.id, f"🔔 Notification registered by name! You'll be notified when '{title}' completes.")
+                    except Exception as name_error:
+                        print(f"❌ Both hash and name notification methods failed: {name_error}")
+                        bot.send_message(message.chat.id, f"⚠️ Could not register notification for this torrent. Manual monitoring recommended.")
+                        
+            except Exception as e:
+                print(f"❌ Error registering notification for torrent {title}: {e}")
+                bot.send_message(message.chat.id, f"⚠️ Could not register notification for this torrent.")
+
+        # Auto-start download monitor if not already running (and if enabled)
+        if config.AUTO_START_MONITOR:
+            try:
+                monitor = get_download_monitor()
+                if not monitor.is_running():
+                    # Get the bot callback function to send notifications
+                    def notification_callback(notification_message):
+                        try:
+                            # Send notification to the user who initiated the download
+                            bot.send_message(message.chat.id, notification_message)
+                        except Exception as e:
+                            print(f"Failed to send notification: {e}")
+                    
+                    monitor.start(notification_callback)
+                    if not notify:  # Only show this message if not using individual notifications
+                        bot.send_message(message.chat.id, "🔔 Download monitor started automatically - you'll get notified when downloads complete!")
+                else:
+                    print("Monitor already running, skipping auto-start")
+            except Exception as e:
+                print(f"Failed to auto-start monitor: {e}")
+                # Don't fail the download if monitor can't start
+
+        # Update downloads.txt
+        qbt_client.update_downloads_txt()
+
+    except qbittorrentapi.LoginFailed as e:
+        bot.send_message(message.chat.id, f"❌ Torrent add error: qBittorrent login failed: {e}")
+    except qbittorrentapi.APIConnectionError as e:
+        bot.send_message(message.chat.id, f"❌ Torrent add error: cannot reach qBittorrent: {e}")
+    except qbittorrentapi.Forbidden403Error as e:
+        bot.send_message(message.chat.id, f"❌ Torrent add error: WebUI auth/CSRF issue: {e}")
+    except qbittorrentapi.TorrentFileError as e:
+        bot.send_message(message.chat.id, f"❌ Torrent add error: Invalid torrent file: {e}")
+    except qbittorrentapi.UnsupportedMediaType415Error as e:
+        bot.send_message(message.chat.id, f"❌ Torrent add error: Unsupported file format: {e}")
+    except Exception as e:
+        error_msg = f"❌ Torrent add error: {type(e).__name__}: {e}"
+        bot.send_message(message.chat.id, error_msg)
+        print(f"Unexpected error in handle_direct_selection: {error_msg}")
 
 
 def handle_selection(bot, call):
@@ -145,11 +276,13 @@ def handle_selection(bot, call):
         # Handle notify flag - register for completion notification
         if notify:
             try:
-                from .notification_handler import register_torrent_for_notification
+                from .notification_handler import register_torrent_for_notification, register_torrent_by_name
                 
                 # Get torrent hash for notification tracking
                 infohash = extract_infohash_from_magnet(magnet) if magnet else None
+                
                 if infohash:
+                    # Primary method: Track by hash
                     register_torrent_for_notification(
                         torrent_hash=infohash,
                         torrent_name=title,
@@ -164,7 +297,24 @@ def handle_selection(bot, call):
                     )
                     bot.send_message(call.message.chat.id, f"🔔 Notification registered! You'll be notified when '{title}' completes.")
                 else:
-                    bot.send_message(call.message.chat.id, f"⚠️ Could not extract torrent hash for notification. You may not receive completion notification.")
+                    # Alternative method: Track by name when hash unavailable
+                    try:
+                        register_torrent_by_name(
+                            torrent_name=title,
+                            user_id=user_id,
+                            chat_id=call.message.chat.id,
+                            additional_info={
+                                'tracker': chosen.get("Tracker", ""),
+                                'size': chosen.get("Size", 0),
+                                'folder': folder,
+                                'save_path': save_path
+                            }
+                        )
+                        bot.send_message(call.message.chat.id, f"🔔 Notification registered by name! You'll be notified when '{title}' completes.")
+                    except Exception as name_error:
+                        print(f"❌ Both hash and name notification methods failed: {name_error}")
+                        bot.send_message(call.message.chat.id, f"⚠️ Could not register notification for this torrent. Manual monitoring recommended.")
+                        
             except Exception as e:
                 print(f"❌ Error registering notification for torrent {title}: {e}")
                 bot.send_message(call.message.chat.id, f"⚠️ Could not register notification for this torrent.")
@@ -222,70 +372,20 @@ def _get_search_mode_label(rich_mode: bool, all_mode: bool, music_mode: bool, re
         return f"🔍 Top {result_count} results (seeders ↓):"
 
 
-def _format_search_results(results: list, search_mode_label: str, rich_mode: bool, all_mode: bool, music_mode: bool = False) -> str:
-    """Format search results for display."""
-    lines = [search_mode_label]
-    if all_mode:
-        lines.append("🌐 Exhaustive search across ALL indexers on Jackett")
-    elif music_mode:
-        lines.append("🎵 Focused search across popular music indexers")
-    elif rich_mode:
-        lines.append("🌟 Comprehensive search across all available indexers")
-    
-    for i, res in enumerate(results, start=1):
-        title = res.get("Title", "Unknown Title")
-        seeders = get_seeders_count(res)
-        size = human_size(res.get("Size", 0))
-        tracker = res.get("Tracker") or res.get("TrackerId") or ""
-        
-        # Add quality indicators
-        quality_indicator = _get_quality_indicator(seeders)
-        
-        # Check if magnet/torrent file is available
-        magnet_indicator = " 🧲" if res.get("MagnetUri") else ""
-        torrent_indicator = " 📁" if res.get("Link") else ""
-        
-        ttag = f" • 🏷 {tracker}" if tracker else ""
-        lines.append(f"\n{i}. {title}{quality_indicator}{magnet_indicator}{torrent_indicator}\n   🌱 {seeders} | 💾 {size}{ttag}")
-
-    result_msg = "\n".join(lines)
-    if len(result_msg) > 4000:  # Telegram message limit
-        result_msg = result_msg[:3900] + "\n\n... (truncated)"
-    
-    return result_msg
-
-
-def _get_quality_indicator(seeders: int) -> str:
-    """Get quality indicator emoji based on seeder count."""
-    if seeders >= 100:
-        return " 🔥"  # Hot torrent
-    elif seeders >= 10:
-        return " ⭐"  # Good torrent
-    elif seeders > 0:
-        return " ✅"  # Available
-    else:
-        return " ⚠️"  # No seeders
-
-
-def _create_selection_markup(results: list) -> types.InlineKeyboardMarkup:
-    """Create inline keyboard markup for torrent selection."""
+def _create_enhanced_selection_markup(results: list) -> types.InlineKeyboardMarkup:
+    """Create enhanced inline keyboard markup with media information."""
     markup = types.InlineKeyboardMarkup()
     
     for i, res in enumerate(results):
-        title = res.get("Title", "Unknown Title")
-        seeders = get_seeders_count(res)
+        # Use enhanced button text from media parser
+        button_text = res.get('button_text', f"{i+1}. {res.get('Title', 'Unknown')} ({get_seeders_count(res)})")
         
-        # Create long button text with title and seeds in parentheses
-        # Limit title length to avoid Telegram's button text limits
-        max_title_length = 35  # Leave room for seeds and numbering
-        if len(title) > max_title_length:
-            title = title[:max_title_length-3] + "..."
-        
-        button_text = f"{i+1}. {title} ({seeders})"
+        # Use display_index for callback to maintain original ordering
+        display_index = res.get('display_index', i)
         
         btn = types.InlineKeyboardButton(
             button_text,
-            callback_data=f"torrent_{i}"
+            callback_data=f"torrent_{display_index}"
         )
         
         # Each button on its own row for full width
@@ -310,6 +410,46 @@ def _attempt_download(chosen_result: dict, qbt_client: QBittorrentClient, fallba
     return fallback_manager.try_alternative_download_methods(chosen_result, save_path)
 
 
+def _send_download_success_message_direct(bot, message, chosen_result: dict, qbt_client: QBittorrentClient, folder: str, save_path: str, download_message: str):
+    """Send download success message for direct selection (non-callback)."""
+    title = chosen_result.get("Title", "Unknown Title")
+    magnet = chosen_result.get("MagnetUri")
+    
+    # Try to find the started torrent for richer information
+    infohash = extract_infohash_from_magnet(magnet) if magnet else None
+    time.sleep(2)  # brief moment for qBittorrent to register
+    tor = qbt_client.find_started_torrent(infohash, title)
+
+    # Build enhanced success message
+    status_parts = ["✅ **Download Started!**", ""]
+    
+    # Add torrent information
+    status_parts.append(f"📁 **File:** {title}")
+    
+    if tor:
+        status_parts.append(f"💾 **Size:** {human_size(tor.size)}")
+        status_parts.append(f"📍 **Status:** {tor.state}")
+        if tor.progress > 0:
+            status_parts.append(f"📊 **Progress:** {tor.progress:.1%}")
+        if tor.dlspeed > 0:
+            status_parts.append(f"⬇️ **Speed:** {human_speed(tor.dlspeed)}")
+        if hasattr(tor, 'eta') and tor.eta < 8640000:  # if eta is reasonable
+            status_parts.append(f"⏰ **ETA:** {format_eta(tor.eta)}")
+    else:
+        # Fallback if torrent not found yet
+        size_bytes = chosen_result.get("Size", 0)
+        if size_bytes:
+            status_parts.append(f"💾 **Size:** {human_size(size_bytes)}")
+    
+    status_parts.append(f"📂 **Folder:** {save_path}")
+    status_parts.append("")
+    status_parts.append(download_message)
+    
+    # Send the status message
+    status_msg = "\n".join(status_parts)
+    bot.send_message(message.chat.id, status_msg, parse_mode='Markdown')
+
+
 def _send_download_success_message(bot, call, chosen_result: dict, qbt_client: QBittorrentClient, folder: str, save_path: str, download_message: str):
     """Send download success message with torrent details."""
     title = chosen_result.get("Title", "Unknown Title")
@@ -320,8 +460,13 @@ def _send_download_success_message(bot, call, chosen_result: dict, qbt_client: Q
     time.sleep(2)  # brief moment for qBittorrent to register
     tor = qbt_client.find_started_torrent(infohash, title)
 
-    # Remove buttons
-    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    # Remove buttons only if the message has them (legacy button-based selection)
+    try:
+        if hasattr(call, 'message') and hasattr(call.message, 'reply_markup') and call.message.reply_markup:
+            bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    except Exception as e:
+        # Ignore button removal errors (message might not have buttons or be too old)
+        print(f"Note: Could not remove buttons: {e}")
 
     if tor:
         started_msg = (

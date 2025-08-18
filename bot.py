@@ -1,4 +1,5 @@
 import os
+import time
 import telebot
 from telebot import types  # noqa
 
@@ -18,6 +19,7 @@ from plugins.torrent.download_monitor import start_download_monitoring, stop_dow
 
 # import notification system
 from notification_system import initialize_notification_manager, get_notification_manager
+from plugins.torrent.notification_handler import get_torrent_notification_manager
 
 # --- Token ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -30,6 +32,11 @@ admin_user_id = os.getenv("ADMIN_USER_ID", "").strip()
 default_chat_id = int(admin_user_id) if admin_user_id else None
 notification_manager = initialize_notification_manager(bot, default_chat_id)
 print(f"📨 Notification system initialized (default chat: {default_chat_id})")
+
+# Initialize torrent notification monitoring
+torrent_manager = get_torrent_notification_manager()
+torrent_manager.start_monitoring()
+print("🔍 Torrent notification monitoring started")
 
 # Notification function for download completions (legacy compatibility)
 def send_download_notification(message_text: str):
@@ -93,28 +100,10 @@ def send_welcome(message):
     )
     bot.reply_to(message, text)
 
-# --- Torrent search (/t and /torrents) ---
 @bot.message_handler(commands=["t", "torrent", "torrents"])
 def cmd_torrent(message):
     from universal_flags import parse_universal_flags, validate_command_flags, convert_flags_to_legacy
-    
-    def get_torrent_usage():
-        """Get usage message for torrent commands."""
-        return (
-            "⚠️ Usage: `/t <search query>:[flags]`\n\n"
-            "📋 **Available Flags:**\n"
-            "• `all` - Exhaustive search across ALL indexers\n"
-            "• `rich` - Comprehensive search across configured indexers\n"
-            "• `music` - Focused search across music indexers\n"
-            "• `notify` - Get notified when this specific torrent completes\n"
-            "• `silent` - Disable notifications\n\n"
-            "📝 **Examples:**\n"
-            "• `/t ubuntu:[all]` - Search with all indexers\n"
-            "• `/t ubuntu:[rich,notify]` - Rich search with notification\n"
-            "• `/t ubuntu:[music]` - Music-focused search\n"
-            "• `/t ubuntu` - Normal search (no flags)\n\n"
-            "⚡ **Note:** Search mode flags (all, rich, music) are mutually exclusive"
-        )
+    from plugins.torrent.result_formatter import get_enhanced_usage_message
     
     # Parse command and extract flags using universal parser
     query, flags_list, parse_errors = parse_universal_flags(message.text, "t")
@@ -123,7 +112,7 @@ def cmd_torrent(message):
     
     # Check if we have a valid query
     if not query.strip():
-        bot.reply_to(message, get_torrent_usage(), parse_mode="Markdown")
+        bot.reply_to(message, get_enhanced_usage_message(), parse_mode="Markdown")
         return
     
     # Show any flag parsing errors
@@ -142,8 +131,70 @@ def cmd_torrent(message):
     # no folder support in this shorthand; pass None
     torrent.start_search(bot, message, folder=None, query=query, rich_mode=rich_mode, all_mode=all_mode, music_mode=music_mode, notify=notify)
 
+# --- Torrent number selection handler ---
+@bot.message_handler(func=lambda message: message.text and message.text.isdigit() and 1 <= int(message.text) <= 50)
+def handle_torrent_number_selection(message):
+    """Handle torrent selection by number (1-50)."""
+    try:
+        selected_number = int(message.text)
+        user_id = message.from_user.id
+        
+        # Get cached search results
+        from plugins.torrent.search_service import search_cache
+        cache_entry = search_cache.get(user_id)
+        
+        if not cache_entry:
+            bot.reply_to(message, "❌ No active search found. Please start a new search with `/t <query>`")
+            return
+        
+        results = cache_entry["results"]
+        if selected_number > len(results):
+            bot.reply_to(message, f"❌ Invalid selection. Please choose a number between 1-{len(results)}")
+            return
+        
+        # Get the selected result (1-based to 0-based index)
+        selected_result = results[selected_number - 1]
+        
+        # Show busy indicator immediately
+        from plugins.torrent.busy_indicator import BusyIndicator
+        busy_msg = bot.send_message(
+            message.chat.id,
+            f"⏳ **Processing selection {selected_number}...**\n"
+            f"🧲 Adding torrent to qBittorrent\n"
+            f"📁 Setting up download folder\n"
+            f"🚀 Starting download...",
+            parse_mode="Markdown"
+        )
+        
+        try:
+            # Instead of using MockCall, directly call a specialized function
+            from plugins.torrent.telegram_handlers import handle_direct_selection
+            
+            # Call the direct selection handler
+            handle_direct_selection(bot, message, selected_result, user_id, cache_entry)
+            
+            # Clear the cache after selection
+            search_cache.pop(user_id, None)
+            
+        except Exception as e:
+            # If something goes wrong, show error and keep the busy indicator info
+            bot.reply_to(message, f"❌ Error processing selection: {e}")
+        finally:
+            # Always try to clean up the busy indicator
+            try:
+                bot.delete_message(message.chat.id, busy_msg.message_id)
+            except Exception:
+                pass  # Ignore deletion failures
+        
+    except ValueError:
+        # Should not happen due to filter, but just in case
+        pass
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error processing selection: {e}")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("torrent_"))
 def callback_torrent(call):
+    """Handle legacy button-based torrent selection (deprecated)."""
     torrent.handle_selection(bot, call)
 
 # --- Torrent diagnostics ---

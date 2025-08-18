@@ -6,6 +6,7 @@ Provides reusable notification functionality across all plugins.
 import json
 import os
 import time
+import threading
 from datetime import datetime
 from typing import Dict, Set, Optional, Callable, Any
 from dataclasses import dataclass, asdict
@@ -191,6 +192,74 @@ class NotificationManager:
                 status.append(f"  • {notif.plugin}: {notif.title} ({age_hours:.1f}h ago)")
         
         return "\n".join(status)
+    
+    def start_monitoring(self):
+        """Start the background monitoring thread."""
+        if hasattr(self, '_monitoring_thread') and self._monitoring_thread and self._monitoring_thread.is_alive():
+            print("🔄 Monitoring thread already running")
+            return
+        
+        self._stop_monitoring = False
+        self._monitoring_thread = threading.Thread(target=self._monitoring_loop, daemon=True)
+        self._monitoring_thread.start()
+        print("🚀 Started notification monitoring thread")
+    
+    def stop_monitoring(self):
+        """Stop the background monitoring thread."""
+        if hasattr(self, '_stop_monitoring'):
+            self._stop_monitoring = True
+        
+        if hasattr(self, '_monitoring_thread') and self._monitoring_thread:
+            self._monitoring_thread.join(timeout=5)
+        
+        print("🛑 Stopped notification monitoring")
+    
+    def _monitoring_loop(self):
+        """Background monitoring loop that checks for completed notifications."""
+        print("🔄 Notification monitoring loop started")
+        
+        while not getattr(self, '_stop_monitoring', False):
+            try:
+                # Check each pending notification
+                pending_copy = self.pending_notifications.copy()
+                
+                for notif_id, notification in pending_copy.items():
+                    try:
+                        # Let the plugin-specific handlers check if notification should be sent
+                        if notification.plugin == 'torrent':
+                            self._check_torrent_notification(notification)
+                        # Add other plugin checks here as needed
+                        
+                    except Exception as e:
+                        print(f"❌ Error checking notification {notif_id}: {e}")
+                
+                # Sleep for 30 seconds between checks
+                for _ in range(30):
+                    if getattr(self, '_stop_monitoring', False):
+                        break
+                    time.sleep(1)
+                        
+            except Exception as e:
+                print(f"❌ Error in monitoring loop: {e}")
+                time.sleep(10)  # Wait a bit before retrying
+        
+        print("🛑 Notification monitoring loop stopped")
+    
+    def _check_torrent_notification(self, notification: NotificationRequest):
+        """Check if a torrent notification should be sent."""
+        try:
+            # Import here to avoid circular imports
+            from plugins.torrent.notification_handler import get_torrent_notification_manager
+            
+            torrent_manager = get_torrent_notification_manager()
+            if torrent_manager:
+                # Check if torrent is complete
+                if torrent_manager.check_torrent_completion(notification.notification_id):
+                    # Send the notification
+                    self.send_notification(notification)
+            
+        except Exception as e:
+            print(f"❌ Error checking torrent notification: {e}")
 
 
 # Global notification manager instance
@@ -251,3 +320,18 @@ def register_notification(plugin: str, notification_type: str, title: str, messa
     
     manager.register_notification(notification)
     return True
+
+
+# Global notification manager instance
+_global_notification_manager = None
+
+def initialize_notification_manager(bot, default_chat_id: Optional[str] = None) -> NotificationManager:
+    """Initialize the global notification manager."""
+    global _global_notification_manager
+    _global_notification_manager = NotificationManager(bot, default_chat_id)
+    _global_notification_manager.start_monitoring()
+    return _global_notification_manager
+
+def get_notification_manager() -> Optional[NotificationManager]:
+    """Get the global notification manager instance."""
+    return _global_notification_manager
