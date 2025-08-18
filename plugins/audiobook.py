@@ -189,7 +189,21 @@ def convert_text_to_speech(text: str, language: str, output_path: str, voice_typ
             if success:
                 return True, "OpenVoice conversion successful"
             else:
-                return False, "OpenVoice conversion failed (implementation incomplete)"
+                # OpenVoice available but failed - try fallback engines
+                logger.warning("OpenVoice conversion failed, falling back to other engines")
+                
+                # Try gTTS first
+                gtts_success, gtts_error = _try_gtts_conversion(text, output_path, language)
+                if gtts_success:
+                    return True, f"OpenVoice failed, but gTTS succeeded: {gtts_error}"
+                
+                # Try pyttsx3 as last resort
+                pyttsx3_success, pyttsx3_error = _try_pyttsx3_conversion(text, output_path, voice_type)
+                if pyttsx3_success:
+                    return True, f"OpenVoice failed, but pyttsx3 succeeded: {pyttsx3_error}"
+                
+                # All engines failed
+                return False, f"OpenVoice conversion failed (implementation incomplete). Fallbacks also failed: gTTS: {gtts_error}, pyttsx3: {pyttsx3_error}"
         else:
             # OpenVoice requested but not available - inform user and fallback
             logger.warning("OpenVoice requested but not available, falling back to auto mode")
@@ -356,11 +370,15 @@ def handle_audiobook_command(message, bot):
             success, error_message = convert_text_to_speech(remaining_text, language, output_path, voice_type, engine)
             logger.info(f"🎵 TTS CONVERSION RESULT: success={success}, error='{error_message}'")
             
-            if success and os.path.exists(output_path):
+            # Check if we have a valid audio file (even if original engine failed but fallback succeeded)
+            file_exists = os.path.exists(output_path)
+            file_size = os.path.getsize(output_path) if file_exists else 0
+            is_valid_audio = file_exists and file_size > 100  # Minimum size for valid audio
+            
+            logger.info(f"📊 FILE VERIFICATION: exists={file_exists}, size={file_size} bytes, valid={is_valid_audio}")
+            
+            if is_valid_audio:
                 try:
-                    file_size = os.path.getsize(output_path)
-                    logger.info(f"📊 FILE VERIFICATION: exists=True, size={file_size} bytes")
-                    
                     with open(output_path, 'rb') as audio_file:
                         logger.info(f"🎧 SENDING VOICE MESSAGE...")
                         bot.send_voice(
@@ -372,17 +390,19 @@ def handle_audiobook_command(message, bot):
                     
                     bot.delete_message(chat_id, status_msg.message_id)
                     logger.info(f"🗑️ STATUS MESSAGE DELETED")
-                    logger.info(f"🎉 AUDIOBOOK SUCCESS: {filename} ({error_message})")
+                    
+                    # Show success message with what actually worked
+                    if success:
+                        logger.info(f"🎉 AUDIOBOOK SUCCESS: {filename} ({error_message})")
+                    else:
+                        logger.info(f"🎉 AUDIOBOOK SUCCESS (fallback): {filename} - File created despite engine reporting failure")
                     
                 except Exception as e:
-                    detailed_error = f"❌ Error sending audiobook: {str(e)}\n🔧 File: {filename}\n📊 Size: {os.path.getsize(output_path) if os.path.exists(output_path) else 0} bytes"
+                    detailed_error = f"❌ Error sending audiobook: {str(e)}\n🔧 File: {filename}\n📊 Size: {file_size} bytes"
                     logger.error(f"❌ SEND ERROR: {e}")
                     bot.edit_message_text(detailed_error, chat_id, status_msg.message_id)
             else:
-                # Detailed error reporting
-                file_exists = os.path.exists(output_path)
-                file_size = os.path.getsize(output_path) if file_exists else 0
-                
+                # Detailed error reporting for actual failures
                 logger.error(f"❌ CONVERSION FAILED: file_exists={file_exists}, file_size={file_size}, error='{error_message}'")
                 
                 detailed_error = f"""❌ **Conversion Failed**
