@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  telegram-bot:
+    build: .
+    container_name: telegram-bot
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+
+      # Jackett (running in your other compose on the same network)
+      JACKETT_URL: "http://jackett:9117"
+      JACKETT_API_KEY: "${JACKETT_API_KEY}"
+
+      # 🔥 20 most popular indexers (must be added/enabled in Jackett)
+      JACKETT_INDEXERS: "yts,nyaa,eztv,1337x,torrentgalaxy,thepiratebay,torlock,limetorrents,glodls,bitsearch,torrentfunk,magnetdl,yourbittorrent,zooqle,torrentdownloads,linuxtracker,anidex,animetosho,idope,ettv"
+
+      # Speed tuning
+      JACKETT_CONNECT_TIMEOUT: "3"
+      JACKETT_READ_TIMEOUT: "12"
+      JACKETT_MAX_WORKERS: "8"
+      JACKETT_RESULT_LIMIT: "5"
+
+      # qBittorrent creds
+      QBIT_HOST: "qbittorrent"
+      QBIT_PORT: "8080"
+      QBIT_USER: "${QBIT_USER:-admin}"
+      QBIT_PASS: "${QBIT_PASS:-adminadmin}"
+    volumes:
+      - "${DOWNLOAD_PATH:-./downloads}:/app/downloads"
+    depends_on:
+      - qbittorrent      
+    networks:
+      - zerotier
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Warsaw
+      - WEBUI_PORT=8080
+      - QBT_WEBUI_USERNAME=${QBIT_USER:-admin}
+      - QBT_WEBUI_PASSWORD=${QBIT_PASS:-adminadmin}
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      - "${DOWNLOAD_PATH:-./downloads}:/downloads"
+      - "${QBIT_CONFIG_PATH:-./qbittorrent-config}:/config"
+    networks:
+      - zerotier
+
+networks:
+  zerotier:
+    external: true

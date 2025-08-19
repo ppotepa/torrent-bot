@@ -75,6 +75,17 @@ except ImportError:
 # Import OpenVoice engine
 from openvoice_engine import get_openvoice_tts, is_openvoice_available
 
+# Import Piper Voice Cloning engine
+try:
+    from piper_voice_cloning_engine import get_piper_voice_cloning_tts, is_piper_voice_cloning_available
+    logger.info("Piper Voice Cloning engine imported successfully")
+except ImportError as e:
+    logger.warning(f"Piper Voice Cloning not available: {e}")
+    def get_piper_voice_cloning_tts():
+        return None
+    def is_piper_voice_cloning_available():
+        return False
+
 # Check other TTS engines
 try:
     import win32com.client
@@ -102,6 +113,16 @@ if not os.path.exists(AUDIOBOOK_DIR):
 def get_available_engines() -> Dict[str, Dict[str, Any]]:
     """Get available TTS engines with OpenVoice priority"""
     engines = {}
+    
+    # Priority 1: Piper Voice Cloning for Polish
+    if is_piper_voice_cloning_available():
+        engines['piper_voice_cloning'] = {
+            'name': 'Piper Voice Cloning',
+            'quality': 'Premium (Voice Cloned)',
+            'available': True,
+            'priority': 0,  # Highest priority
+            'languages': ['polish']
+        }
     
     if is_openvoice_available():
         engines['openvoice'] = {
@@ -156,16 +177,26 @@ def convert_text_to_speech(text: str, language: str, output_path: str, voice_typ
     logger.info(f"TTS conversion: {len(text)} chars, {language}, {voice_type}, engine={engine}")
     
     if engine == 'auto':
-        # Auto mode prioritizes OpenVoice
+        # Auto mode: Prioritize Piper Voice Cloning for Polish
+        if language == 'polish' and is_piper_voice_cloning_available():
+            logger.info("Using Piper Voice Cloning for Polish (highest quality with voice cloning)")
+            engine_instance = get_piper_voice_cloning_tts()
+            success = engine_instance.convert_text_to_speech(text, output_path, language, voice_type)
+            if success:
+                return True, "Piper Voice Cloning conversion successful"
+            else:
+                logger.warning("Piper Voice Cloning failed, falling back to other engines")
+        
+        # Fallback to OpenVoice for other languages or if Piper failed
         if is_openvoice_available():
-            logger.info("Prioritizing OpenVoice for premium quality")
+            logger.info("Trying OpenVoice for premium quality")
             engine_instance = get_openvoice_tts()
             success = engine_instance.convert_text_to_speech(text, output_path, language, voice_type)
             if success:
                 return True, "OpenVoice conversion successful"
         
         # Fallback to other engines in priority order
-        logger.warning("OpenVoice not available, trying fallback engines")
+        logger.warning("Premium engines not available, trying fallback engines")
         
         # Try gTTS first (most reliable for basic TTS)
         gtts_success, gtts_error = _try_gtts_conversion(text, output_path, language)
@@ -181,6 +212,17 @@ def convert_text_to_speech(text: str, language: str, output_path: str, voice_typ
         error_msg = f"All TTS engines failed. gTTS: {gtts_error}, pyttsx3: {pyttsx3_error}"
         logger.error(error_msg)
         return False, error_msg
+    
+    elif engine == 'piper_voice_cloning':
+        if is_piper_voice_cloning_available():
+            engine_instance = get_piper_voice_cloning_tts()
+            success = engine_instance.convert_text_to_speech(text, output_path, language, voice_type)
+            if success:
+                return True, "Piper Voice Cloning conversion successful"
+            else:
+                return False, "Piper Voice Cloning conversion failed"
+        else:
+            return False, "Piper Voice Cloning requested but not available"
     
     elif engine == 'openvoice':
         if is_openvoice_available():
@@ -344,8 +386,18 @@ def handle_audiobook_command(message, bot):
             
             # Show processing message
             engines = get_available_engines()
-            if engine == 'auto' and is_openvoice_available():
-                msg = f"🎭 Converting with OpenVoice Premium (best quality)\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
+            if engine == 'auto':
+                if language == 'polish' and is_piper_voice_cloning_available():
+                    msg = f"🎭 Converting with Piper Voice Cloning (YOUR VOICE!)\n📝 {len(remaining_text)} chars → {language} voice cloned"
+                elif is_openvoice_available():
+                    msg = f"🎭 Converting with OpenVoice Premium (best quality)\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
+                else:
+                    msg = f"⚠️ Premium engines not available, using fallback\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
+            elif engine == 'piper_voice_cloning':
+                if is_piper_voice_cloning_available():
+                    msg = f"🎭 Converting with Piper Voice Cloning (YOUR VOICE!)\n📝 {len(remaining_text)} chars → voice cloned"
+                else:
+                    msg = f"⚠️ Piper Voice Cloning not available, using fallback\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
             elif engine == 'openvoice':
                 if is_openvoice_available():
                     msg = f"🎭 Converting with OpenVoice Premium\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
@@ -415,6 +467,7 @@ def handle_audiobook_command(message, bot):
 ⚠️ **Error**: {error_message}
 
 🛠️ **Debug Info**:
+• Piper Voice Cloning available: {is_piper_voice_cloning_available()}
 • OpenVoice available: {is_openvoice_available()}
 • gTTS available: {GTTS_AVAILABLE}
 • pyttsx3 available: {PYTTSX3_AVAILABLE}
@@ -458,26 +511,27 @@ def show_audiobook_help(bot, chat_id: int):
     
     engine_text = "\n".join(engine_list) if engine_list else "  No engines available"
     
-    help_text = f"""🎭 **Audiobook Converter with OpenVoice Premium**
+    help_text = f"""🎭 **Audiobook Converter with Voice Cloning**
 
 **Available Engines:**
 {engine_text}
 
 **Usage:**
-• `/ab Your text here` - Auto OpenVoice conversion
+• `/ab Your text here` - Auto conversion (Voice Cloning for Polish!)
 • `/ab Hello world:[eng,female]` - English female voice  
-• `/ab Witaj świecie:[pl,male]` - Polish male voice
-• `/ab text:[english,british,openvoice]` - Force OpenVoice British
+• `/ab Witaj świecie:[pl,male]` - Polish with YOUR voice!
+• `/ab text:[piper_voice_cloning]` - Force voice cloning
 
 **Features:**
-🎭 OpenVoice Premium (default for auto mode)
+🎭 **Voice Cloning for Polish** (uses YOUR voice samples!)
+🔥 OpenVoice Premium (for other languages)
 🌍 Auto language detection
 🎤 Multiple voice types
 ⚡ Instant conversion
 
 **Examples:**
+• `/ab Witaj świecie` → **YOUR VOICE** (Polish auto-detected)
 • `/ab Hello world` → OpenVoice English female (auto)
-• `/ab Witaj` → Auto-detects Polish, OpenVoice male
-• `/ab Test:[british]` → OpenVoice British accent"""
+• `/ab Test polski:[piper_voice_cloning]` → Force your voice cloning"""
     
     bot.send_message(chat_id, help_text, parse_mode='Markdown')
