@@ -20,7 +20,4 @@ RUN yt-dlp -U || true
 # Copy bot + plugins
 COPY . .
 
-# Use the full bot_fixed.py as bot.py
-COPY bot_working.py /app/bot.py
-
 CMD ["python", "bot.py"]

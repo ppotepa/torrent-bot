@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Enable BuildKit for better caching
+      cache_from:
+        - telegram-bot:latest
+      # Use build arguments for cache busting only when needed
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    image: telegram-bot:latest
+    container_name: telegram-bot
+    restart: unless-stopped
+    
+    # Environment variables
+    environment:
+      # Core bot configuration
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+      ADMIN_USER_IDS: "${ADMIN_USER_IDS:-${ADMIN_USER_ID}}"
+      OWNER_USER_IDS: "${OWNER_USER_IDS:-${ADMIN_USER_ID}}"
+      
+      # qBittorrent configuration
+      QBITTORRENT_URL: "http://qbittorrent:8080"
+      QBITTORRENT_USER: "${QBIT_USER:-admin}"
+      QBITTORRENT_PASS: "${QBIT_PASS:-adminadmin}"
+      
+      # Jackett configuration (optional)
+      JACKETT_URL: "${JACKETT_URL:-http://jackett:9117}"
+      JACKETT_API_KEY: "${JACKETT_API_KEY:-}"
+      
+      # Performance settings
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    
+    # Volume mounts
+    volumes:
+      # Downloads directory
+      - "${DOWNLOAD_PATH:-./downloads}:/app/downloads"
+      # Audiobooks directory
+      - "${AUDIOBOOK_PATH:-./audiobooks}:/app/audiobooks"
+      # Logs directory
+      - "${LOGS_PATH:-./logs}:/app/logs"
+      # Development: mount source code for hot reload (comment out for production)
+      - "./src:/app/src:ro"
+      - "./bot.py:/app/bot.py:ro"
+    
+    # Dependencies
+    depends_on:
+      qbittorrent:
+        condition: service_healthy
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - torrent-network
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+      - WEBUI_PORT=8080
+      - QBT_WEBUI_USERNAME=${QBIT_USER:-admin}
+      - QBT_WEBUI_PASSWORD=${QBIT_PASS:-adminadmin}
+    
+    ports:
+      - "${QBIT_PORT:-8080}:8080"
+      - "${TORRENT_PORT:-6881}:6881"
+      - "${TORRENT_PORT:-6881}:6881/udp"
+    
+    volumes:
+      - "${DOWNLOAD_PATH:-./downloads}:/downloads"
+      - "${QBIT_CONFIG_PATH:-./qbittorrent-config}:/config"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"] 
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - torrent-network
+
+  # Optional: Jackett for torrent indexing
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    container_name: jackett
+    restart: unless-stopped
+    
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    
+    ports:
+      - "${JACKETT_PORT:-9117}:9117"
+    
+    volumes:
+      - "${JACKETT_CONFIG_PATH:-./jackett-config}:/config"
+      - "${DOWNLOAD_PATH:-./downloads}:/downloads"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9117"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - torrent-network
+    
+    # Make this service optional
+    profiles:
+      - jackett
+
+networks:
+  torrent-network:
+    driver: bridge
+    name: torrent-network

@@ -1,23 +1,54 @@
 # Git and version control
 .git
 .gitignore
+.gitattributes
 
-# Python cache and virtual environments
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-venv/
-env/
-ENV/
+# Documentation
+README.md
+docs/
+*.md
+FINAL_SYSTEM_READY.md
 
-# IDE and editor files
+# Development files
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+.env.example
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Docker files (don't copy other docker configs)
+Dockerfile*
+docker-compose*.yaml
+docker-compose*.yml
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Legacy and backup files
+bot_legacy.py
+archive/
+backup/
+
+# Large directories that aren't needed in container
+.tox/
+.mypy_cache/
+node_modules/
 
 # OS generated files
 .DS_Store
@@ -28,27 +59,19 @@ ENV/
 ehthumbs.db
 Thumbs.db
 
-# Log files
-logs/
-*.log
+# Python virtual environments
+venv/
+env/
+ENV/
 
-# Test files
-test_*
-*_test.py
-pytest.ini
-.pytest_cache/
+# IDE files
+*.swp
+*.swo
+*~
 
-# Documentation
-*.md
-!README.md
-
-# Audio files (can be large)
-*.mp3
-*.wav
-*.m4a
-audiobooks/
+# Downloaded content (will be mounted as volumes)
 downloads/
-
-# Temporary files
-*.tmp
-*.temp
+audiobooks/
+media/
+qbittorrent-config/
+jackett-config/

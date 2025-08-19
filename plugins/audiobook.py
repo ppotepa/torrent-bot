@@ -73,10 +73,27 @@ except ImportError:
         return defaults
 
 # Import OpenVoice engine
-from openvoice_engine import get_openvoice_tts, is_openvoice_available
+try:
+    import sys
+    import os
+    # Add audiobook directory to path
+    audiobook_dir = os.path.join(os.path.dirname(__file__), 'audiobook', 'engines')
+    if audiobook_dir not in sys.path:
+        sys.path.insert(0, audiobook_dir)
+    from openvoice_engine import get_openvoice_tts, is_openvoice_available
+    logger.info("OpenVoice engine imported successfully")
+except ImportError as e:
+    logger.warning(f"OpenVoice not available: {e}")
+    def get_openvoice_tts():
+        return None
+    def is_openvoice_available():
+        return False
 
 # Import Piper Voice Cloning engine
 try:
+    # Add audiobook directory to path if not already there
+    if audiobook_dir not in sys.path:
+        sys.path.insert(0, audiobook_dir)
     from piper_voice_cloning_engine import get_piper_voice_cloning_tts, is_piper_voice_cloning_available
     logger.info("Piper Voice Cloning engine imported successfully")
 except ImportError as e:
@@ -475,7 +492,6 @@ def handle_audiobook_command(message, bot):
         logger.info(f"📊 FILE VERIFICATION: exists={file_exists}, size={file_size} bytes, valid={is_valid_audio}")
         
         if is_valid_audio:
-        if is_valid_audio:
             try:
                 with open(output_path, 'rb') as audio_file:
                     logger.info(f"� SENDING VOICE MESSAGE...")
@@ -536,9 +552,9 @@ def handle_audiobook_command(message, bot):
                 f"📋 **For help:** `/ab` without text"
             )
             bot.send_message(chat_id, error_msg, parse_mode='Markdown')
-        except:
+        except Exception as fallback_e:
             # Final fallback
-            bot.send_message(chat_id, f"💥 Critical audiobook error: {str(e)}")
+            bot.send_message(chat_id, f"💥 Critical audiobook error: {str(fallback_e)}")
 
 def handle_audiobook_file(message, bot):
     """Handle file uploads for audiobook conversion"""

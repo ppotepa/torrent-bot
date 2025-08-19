@@ -1,0 +1,48 @@
+version: '3.8'
+
+# Development override for faster rebuilds
+services:
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: python-deps  # Stop at python-deps stage for development
+      cache_from:
+        - telegram-bot:base-system
+        - telegram-bot:python-deps
+        - telegram-bot:latest
+    
+    # Override volumes for development hot-reload
+    volumes:
+      # Mount source code for live editing
+      - "./src:/app/src"
+      - "./bot.py:/app/bot.py"
+      - "./start.py:/app/start.py"
+      - "./.env:/app/.env"
+      
+      # Persistent data directories
+      - "${DOWNLOAD_PATH:-./downloads}:/app/downloads"
+      - "${AUDIOBOOK_PATH:-./audiobooks}:/app/audiobooks" 
+      - "${LOGS_PATH:-./logs}:/app/logs"
+    
+    # Development command with auto-restart
+    command: ["python", "-u", "bot.py"]
+    
+    # Development environment variables
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - DEBUG=1
+    
+    # Faster restart policy for development
+    restart: "no"
+
+  # Disable health checks in development for faster startup
+  qbittorrent:
+    healthcheck:
+      disable: true
+  
+  jackett:
+    healthcheck:
+      disable: true
+

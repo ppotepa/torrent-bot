@@ -30,15 +30,17 @@ try:
     convert_text_to_speech = audiobook_main.convert_text_to_speech
     
 except Exception as e:
-    # Fallback if import fails
+    # Fallback if import fails - capture error message
+    error_message = str(e)
+    
     def handle_audiobook_command(*args, **kwargs):
-        raise ImportError(f"Could not import main audiobook module: {e}")
+        raise ImportError(f"Could not import main audiobook module: {error_message}")
     def handle_audiobook_file(*args, **kwargs):
-        raise ImportError(f"Could not import main audiobook module: {e}")
+        raise ImportError(f"Could not import main audiobook module: {error_message}")
     def show_audiobook_help(*args, **kwargs):
-        raise ImportError(f"Could not import main audiobook module: {e}")
+        raise ImportError(f"Could not import main audiobook module: {error_message}")
     def convert_text_to_speech(*args, **kwargs):
-        raise ImportError(f"Could not import main audiobook module: {e}")
+        raise ImportError(f"Could not import main audiobook module: {error_message}")
 
 # Main exports
 __all__ = [
