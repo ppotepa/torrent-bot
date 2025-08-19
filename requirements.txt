@@ -14,7 +14,7 @@ torchaudio>=0.13.0
 yt-dlp>=2023.12.30
 
 # System Dependencies (Windows specific - optional in Docker)
-pywin32==306; sys_platform == "win32"
+pywin32>=306; sys_platform == "win32"
 
 # Data Processing
 requests==2.31.0
@@ -22,7 +22,7 @@ requests==2.31.0
 # Additional potential dependencies
 qbittorrent-api>=2025.7.0
 beautifulsoup4==4.12.2
-lxml==4.9.3
+lxml>=4.9.3
 
 # Development/Testing
 pytest==7.4.3
