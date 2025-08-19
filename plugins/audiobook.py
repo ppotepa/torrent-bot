@@ -353,7 +353,7 @@ def _try_pyttsx3_conversion(text: str, output_path: str, voice_type: str) -> tup
         return False, error_msg
 
 def handle_audiobook_command(message, bot):
-    """Handle audiobook commands with comprehensive error tracking"""
+    """Handle audiobook commands with comprehensive error tracking and voice profiles"""
     user_id = message.from_user.id
     chat_id = message.chat.id
     command_text = message.text.strip()
@@ -361,31 +361,93 @@ def handle_audiobook_command(message, bot):
     logger.info(f"🎭 AUDIOBOOK REQUEST: User {user_id} | Chat {chat_id} | Command: {command_text}")
     
     try:
-        # Parse flags
-        flags, remaining_text = parse_universal_flags(command_text)
-        final_flags = apply_default_flags(flags, 'ab')
+        # Import enhanced parser and profile synthesizer
+        try:
+            import sys
+            sys.path.append(os.path.join(os.path.dirname(__file__), 'audiobook'))
+            from enhanced_command_parser import parse_audiobook_command
+            from profile_synthesizer import get_tts_synthesizer, list_available_profiles
+            PROFILE_SYSTEM_AVAILABLE = True
+        except ImportError as e:
+            logger.warning(f"Profile system not available: {e}, using legacy parsing")
+            PROFILE_SYSTEM_AVAILABLE = False
         
-        logger.info(f"📊 PARSED FLAGS: {flags} → Final: {final_flags}")
-        logger.info(f"📝 REMAINING TEXT: '{remaining_text}' ({len(remaining_text)} chars)")
-        
-        # Extract parameters
-        language = get_language_code(final_flags.get('language', 'english'))
-        voice_type = final_flags.get('voice_type', 'female')
-        engine = final_flags.get('engine', 'auto')  # Auto prioritizes OpenVoice
-        
-        logger.info(f"🎛️ TTS PARAMS: lang={language}, voice={voice_type}, engine={engine}")
-        
-        # Handle inline text conversion
-        if remaining_text:
-            # Auto-detect language if not specified
-            if 'language' not in flags:
-                detected_lang = detect_language(remaining_text)
-                if detected_lang != language:
-                    language = detected_lang
-                    logger.info(f"🌍 Auto-detected language: {language}")
+        if PROFILE_SYSTEM_AVAILABLE:
+            # === NOWY SYSTEM PROFILI ===
+            text, profile_id, flags = parse_audiobook_command(command_text)
+            
+            logger.info(f"🎭 PROFILE PARSING: text='{text[:50]}...', profile='{profile_id}', flags={flags}")
+            
+            # Handle help command
+            if not text.strip():
+                available_profiles = list_available_profiles()
+                help_text = "🎭 **AUDIOBOOK TTS z profilami głosowymi**\n\n"
+                help_text += "📋 **Składnia:**\n"
+                help_text += "• `/ab Twój tekst:profil` - Synteza z profilem\n"
+                help_text += "• `/ab Twój tekst` - Auto-wybór profilu\n\n"
+                help_text += "🎤 **Dostępne profile:**\n"
+                
+                for profile_key, profile_name in available_profiles.items():
+                    help_text += f"• `{profile_key}` - {profile_name}\n"
+                
+                help_text += "\n💡 **Przykłady:**\n"
+                help_text += "• `/ab Cześć jak się masz:pawel` - Twój głos\n"
+                help_text += "• `/ab Hello world:natural` - Naturalny angielski\n"
+                help_text += "• `/ab Szybka informacja:fast` - Szybka synteza\n"
+                help_text += "• `/ab Witaj świecie` - Auto (polski → pawel)\n"
+                
+                bot.send_message(chat_id, help_text, parse_mode='Markdown')
+                return
+            
+            # Generate filename
+            clean_text = text[:30].replace(' ', '_')
+            filename = f"{clean_text}_{profile_id}.mp3"
+            output_path = os.path.join(AUDIOBOOK_DIR, filename)
+            
+            logger.info(f"📁 OUTPUT PATH: {output_path}")
             
             # Show processing message
-            engines = get_available_engines()
+            tts_synthesizer = get_tts_synthesizer()
+            profile_info = tts_synthesizer.get_profile_info(profile_id)
+            
+            status_msg = bot.send_message(
+                chat_id, 
+                f"🎭 **Synteza z profilem:** `{profile_id}`\n"
+                f"📝 **Tekst:** {len(text)} znaków\n"
+                f"⚙️ **Profil:** {profile_info.split('📝')[0]}..."
+            )
+            
+            # Synthesize with profile
+            logger.info(f"🎵 STARTING PROFILE-BASED TTS CONVERSION...")
+            success, result_message = tts_synthesizer.synthesize_with_profile(text, profile_id, output_path)
+            logger.info(f"🎵 PROFILE TTS RESULT: success={success}, message='{result_message}'")
+            
+        else:
+            # === LEGACY SYSTEM ===
+            flags, remaining_text = parse_universal_flags(command_text)
+            final_flags = apply_default_flags(flags, 'ab')
+            
+            logger.info(f"📊 LEGACY PARSING: {flags} → Final: {final_flags}")
+            logger.info(f"📝 REMAINING TEXT: '{remaining_text}' ({len(remaining_text)} chars)")
+            
+            # Handle help command
+            if not remaining_text.strip():
+                show_audiobook_help(bot, chat_id)
+                return
+            
+            # Extract parameters
+            language = get_language_code(final_flags.get('language', 'polish'))
+            voice_type = final_flags.get('voice_type', 'male')
+            engine = final_flags.get('engine', 'auto')
+            
+            logger.info(f"🎛️ LEGACY TTS PARAMS: lang={language}, voice={voice_type}, engine={engine}")
+            
+            # Generate filename
+            clean_text = remaining_text[:30].replace(' ', '_')
+            filename = f"{clean_text}_{language}_{voice_type}.mp3"
+            output_path = os.path.join(AUDIOBOOK_DIR, filename)
+            
+            # Show processing message
             if engine == 'auto':
                 if language == 'polish' and is_piper_voice_cloning_available():
                     msg = f"🎭 Converting with Piper Voice Cloning (YOUR VOICE!)\n📝 {len(remaining_text)} chars → {language} voice cloned"
@@ -393,145 +455,121 @@ def handle_audiobook_command(message, bot):
                     msg = f"🎭 Converting with OpenVoice Premium (best quality)\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
                 else:
                     msg = f"⚠️ Premium engines not available, using fallback\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
-            elif engine == 'piper_voice_cloning':
-                if is_piper_voice_cloning_available():
-                    msg = f"🎭 Converting with Piper Voice Cloning (YOUR VOICE!)\n📝 {len(remaining_text)} chars → voice cloned"
-                else:
-                    msg = f"⚠️ Piper Voice Cloning not available, using fallback\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
-            elif engine == 'openvoice':
-                if is_openvoice_available():
-                    msg = f"🎭 Converting with OpenVoice Premium\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
-                else:
-                    msg = f"⚠️ OpenVoice not available, using fallback\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
             else:
                 msg = f"🎵 Converting with {engine}\n📝 {len(remaining_text)} chars → {language} {voice_type} voice"
             
-            logger.info(f"📱 SENDING STATUS MESSAGE: {msg}")
             status_msg = bot.send_message(chat_id, msg)
-            logger.info(f"✅ STATUS MESSAGE SENT: ID={status_msg.message_id}")
             
-            # Generate filename
-            clean_text = remaining_text[:30].replace(' ', '_')
-            filename = f"{clean_text}_{language}_{voice_type}.mp3"
-            output_path = os.path.join(AUDIOBOOK_DIR, filename)
-            
-            logger.info(f"📁 OUTPUT PATH: {output_path}")
-            
-            # Convert
-            logger.info(f"🎵 STARTING TTS CONVERSION...")
-            success, error_message = convert_text_to_speech(remaining_text, language, output_path, voice_type, engine)
-            logger.info(f"🎵 TTS CONVERSION RESULT: success={success}, error='{error_message}'")
-            
-            # Check if we have a valid audio file (even if original engine failed but fallback succeeded)
-            file_exists = os.path.exists(output_path)
-            file_size = os.path.getsize(output_path) if file_exists else 0
-            is_valid_audio = file_exists and file_size > 100  # Minimum size for valid audio
-            
-            logger.info(f"📊 FILE VERIFICATION: exists={file_exists}, size={file_size} bytes, valid={is_valid_audio}")
-            
-            if is_valid_audio:
-                try:
-                    with open(output_path, 'rb') as audio_file:
-                        logger.info(f"🎧 SENDING VOICE MESSAGE...")
-                        bot.send_voice(
-                            chat_id,
-                            audio_file,
-                            caption=f"🎧 {filename} • {file_size} bytes"
-                        )
-                        logger.info(f"✅ VOICE MESSAGE SENT SUCCESSFULLY")
+            # Convert using legacy system
+            logger.info(f"🎵 STARTING LEGACY TTS CONVERSION...")
+            success, result_message = convert_text_to_speech(remaining_text, language, output_path, voice_type, engine)
+            logger.info(f"🎵 LEGACY TTS RESULT: success={success}, error='{result_message}'")
+            text = remaining_text  # For file handling below
+        
+        # === COMMON FILE HANDLING ===
+        # Check if we have a valid audio file
+        file_exists = os.path.exists(output_path)
+        file_size = os.path.getsize(output_path) if file_exists else 0
+        is_valid_audio = file_exists and file_size > 100
+        
+        logger.info(f"📊 FILE VERIFICATION: exists={file_exists}, size={file_size} bytes, valid={is_valid_audio}")
+        
+        if is_valid_audio:
+        if is_valid_audio:
+            try:
+                with open(output_path, 'rb') as audio_file:
+                    logger.info(f"� SENDING VOICE MESSAGE...")
                     
-                    bot.delete_message(chat_id, status_msg.message_id)
-                    logger.info(f"🗑️ STATUS MESSAGE DELETED")
+                    # Enhanced caption with profile info
+                    if PROFILE_SYSTEM_AVAILABLE:
+                        caption = f"� {filename} • {file_size} bytes\n🎭 Profil: {profile_id}\n� {result_message}"
+                    else:
+                        caption = f"🎧 {filename} • {file_size} bytes"
                     
-                    # Show success message with what actually worked
+                    bot.send_voice(
+                        chat_id,
+                        audio_file,
+                        caption=caption
+                    )
+                    logger.info(f"✅ VOICE MESSAGE SENT SUCCESSFULLY")
+                
+                bot.delete_message(chat_id, status_msg.message_id)
+                logger.info(f"🗑️ STATUS MESSAGE DELETED")
+                
+                # Show success message
+                if PROFILE_SYSTEM_AVAILABLE:
+                    logger.info(f"🎉 PROFILE AUDIOBOOK SUCCESS: {filename} - {result_message}")
+                else:
                     if success:
-                        logger.info(f"🎉 AUDIOBOOK SUCCESS: {filename} ({error_message})")
+                        logger.info(f"🎉 AUDIOBOOK SUCCESS: {filename} ({result_message})")
                     else:
                         logger.info(f"🎉 AUDIOBOOK SUCCESS (fallback): {filename} - File created despite engine reporting failure")
-                    
-                except Exception as e:
-                    detailed_error = f"❌ Error sending audiobook: {str(e)}\n🔧 File: {filename}\n📊 Size: {file_size} bytes"
-                    logger.error(f"❌ SEND ERROR: {e}")
-                    bot.edit_message_text(detailed_error, chat_id, status_msg.message_id)
+                        
+            except Exception as send_error:
+                logger.error(f"Error sending voice message: {send_error}")
+                bot.edit_message_text(
+                    f"❌ Error sending audio file: {str(send_error)}",
+                    chat_id,
+                    status_msg.message_id
+                )
+        else:
+            # Handle failure
+            if PROFILE_SYSTEM_AVAILABLE:
+                error_text = f"❌ **Błąd syntezy z profilem** `{profile_id}`\n📝 **Szczegóły:** {result_message}"
             else:
-                # Detailed error reporting for actual failures
-                logger.error(f"❌ CONVERSION FAILED: file_exists={file_exists}, file_size={file_size}, error='{error_message}'")
+                error_text = f"❌ **TTS Conversion Failed**\n📝 **Details:** {result_message}"
                 
-                detailed_error = f"""❌ **Conversion Failed**
-🔧 **Engine**: {engine}
-📝 **Text**: {len(remaining_text)} chars  
-🌍 **Language**: {language}
-🎤 **Voice**: {voice_type}
-📁 **File exists**: {file_exists}
-📊 **File size**: {file_size} bytes
-⚠️ **Error**: {error_message}
-
-🛠️ **Debug Info**:
-• Piper Voice Cloning available: {is_piper_voice_cloning_available()}
-• OpenVoice available: {is_openvoice_available()}
-• gTTS available: {GTTS_AVAILABLE}
-• pyttsx3 available: {PYTTSX3_AVAILABLE}
-
-🔍 **File path**: `{output_path}`"""
-                
-                bot.edit_message_text(detailed_error, chat_id, status_msg.message_id, parse_mode='Markdown')
-            return
+            try:
+                bot.edit_message_text(error_text, chat_id, status_msg.message_id, parse_mode='Markdown')
+            except:
+                bot.send_message(chat_id, error_text, parse_mode='Markdown')
+            
+            logger.error(f"💥 AUDIOBOOK FAILED: {result_message}")
             
     except Exception as e:
-        logger.error(f"❌ AUDIOBOOK HANDLER EXCEPTION: {e}")
-        import traceback
-        logger.error(f"📋 TRACEBACK: {traceback.format_exc()}")
+        logger.error(f"Critical audiobook error: {e}", exc_info=True)
         try:
-            bot.send_message(chat_id, f"❌ **Critical Error in Audiobook Handler**\n\n🔧 **Error**: {str(e)}\n\n🔍 Check logs for details", parse_mode='Markdown')
+            error_msg = (
+                f"💥 **Critical Error in Audiobook Command**\n\n"
+                f"📝 **Error:** {str(e)}\n"
+                f"💡 **Try:** `/ab your text` or `/ab text:profile`\n"
+                f"📋 **For help:** `/ab` without text"
+            )
+            bot.send_message(chat_id, error_msg, parse_mode='Markdown')
         except:
-            pass  # Fallback if even error message fails
-        return
-    
-    # Show help
-    show_audiobook_help(bot, chat_id)
-    
-    # Show help
-    show_audiobook_help(bot, chat_id)
+            # Final fallback
+            bot.send_message(chat_id, f"💥 Critical audiobook error: {str(e)}")
 
 def handle_audiobook_file(message, bot):
     """Handle file uploads for audiobook conversion"""
     bot.send_message(message.chat.id, "📁 File processing not yet implemented. Use inline text: `/ab Your text here`")
 
-def show_audiobook_help(bot, chat_id: int):
-    """Show audiobook help"""
-    engines = get_available_engines()
-    engine_list = []
-    
-    for engine_id, engine_info in engines.items():
-        priority = engine_info.get('priority', 99)
-        name = engine_info.get('name', engine_id)
-        quality = engine_info.get('quality', 'Unknown')
-        available = "✅" if engine_info.get('available', False) else "❌"
-        engine_list.append(f"  {priority}. {available} {name} ({quality})")
-    
-    engine_text = "\n".join(engine_list) if engine_list else "  No engines available"
-    
-    help_text = f"""🎭 **Audiobook Converter with Voice Cloning**
+def show_audiobook_help(bot, chat_id):
+    """Show legacy audiobook help"""
+    help_text = """
+🎧 **AUDIOBOOK TTS COMMANDS**
 
-**Available Engines:**
-{engine_text}
-
-**Usage:**
+🎯 **Quick Commands:**
 • `/ab Your text here` - Auto conversion (Voice Cloning for Polish!)
-• `/ab Hello world:[eng,female]` - English female voice  
-• `/ab Witaj świecie:[pl,male]` - Polish with YOUR voice!
+• `/ab [openvoice] Text` - Force OpenVoice engine  
+• `/ab [english] Text` - Force English
 • `/ab text:[piper_voice_cloning]` - Force voice cloning
 
-**Features:**
-🎭 **Voice Cloning for Polish** (uses YOUR voice samples!)
-🔥 OpenVoice Premium (for other languages)
-🌍 Auto language detection
-🎤 Multiple voice types
-⚡ Instant conversion
+🎛️ **Available Flags:**
+• Language: `[polish]`, `[english]` 
+• Voice: `[male]`, `[female]`
+• Engine: `[openvoice]`, `[gtts]`, `[piper_voice_cloning]`
 
-**Examples:**
-• `/ab Witaj świecie` → **YOUR VOICE** (Polish auto-detected)
-• `/ab Hello world` → OpenVoice English female (auto)
-• `/ab Test polski:[piper_voice_cloning]` → Force your voice cloning"""
+📊 **Examples:**
+• `/ab Witaj świecie` → Polish Voice Cloning
+• `/ab [english,female] Hello world` → English Female
+• `/ab [openvoice,male] Test message` → OpenVoice Male
+
+⚙️ **Available Engines:**"""
+    
+    engines = get_available_engines()
+    for engine_id, engine_info in engines.items():
+        available = "✅" if engine_info['available'] else "❌"
+        help_text += f"\n{available} {engine_info['name']} - {engine_info['quality']}"
     
     bot.send_message(chat_id, help_text, parse_mode='Markdown')

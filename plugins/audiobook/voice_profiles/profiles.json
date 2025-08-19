@@ -1,0 +1,97 @@
+{
+  "pawel": {
+    "name": "Paweł (Twój głos)",
+    "description": "Profil oparty na próbkach głosu Pawła",
+    "type": "voice_cloning",
+    "reference_samples": [
+      "mowa.wav",
+      "mowa-2.wav"
+    ],
+    "speaker_embedding": "pawel_speaker_embedding.pt",
+    "quality": "premium",
+    "language": "polish",
+    "voice_type": "male",
+    "parameters": {
+      "voice_strength": 1.0,
+      "naturalness": 0.9,
+      "clarity": 0.8,
+      "emotional_tone": "neutral"
+    }
+  },
+  "natural": {
+    "name": "Naturalny Polski",
+    "description": "Wysoka jakość TTS bez klonowania głosu",
+    "type": "enhanced_piper",
+    "quality": "high",
+    "language": "polish",
+    "voice_type": "male",
+    "parameters": {
+      "noise_scale": 0.333,
+      "length_scale": 1.1,
+      "noise_w": 0.4,
+      "sentence_silence": 0.1
+    }
+  },
+  "expressive": {
+    "name": "Ekspresyjny Polski",
+    "description": "Ekspresyjny styl z większą emocjonalnością",
+    "type": "enhanced_piper",
+    "quality": "high",
+    "language": "polish",
+    "voice_type": "male",
+    "parameters": {
+      "noise_scale": 0.4,
+      "length_scale": 1.05,
+      "noise_w": 0.5,
+      "sentence_silence": 0.15
+    }
+  },
+  "fast": {
+    "name": "Szybki",
+    "description": "Szybka synteza z dobrą jakością",
+    "type": "enhanced_piper",
+    "quality": "good",
+    "language": "polish",
+    "voice_type": "male",
+    "parameters": {
+      "noise_scale": 0.5,
+      "length_scale": 0.9,
+      "noise_w": 0.3,
+      "sentence_silence": 0.05
+    }
+  },
+  "female": {
+    "name": "Kobieta Naturalna",
+    "description": "Naturalny kobiecy głos polski",
+    "type": "enhanced_piper",
+    "quality": "high",
+    "language": "polish",
+    "voice_type": "female",
+    "parameters": {
+      "noise_scale": 0.333,
+      "length_scale": 1.15,
+      "noise_w": 0.35,
+      "sentence_silence": 0.12
+    }
+  },
+  "pawel_custom": {
+    "name": "Paweł Custom Voice",
+    "description": "Niestandardowy profil oparty na próbkach głosu Pawła",
+    "type": "voice_cloning",
+    "reference_samples": [
+      "voice_profiles/reference_samples/mowa.wav",
+      "voice_profiles/reference_samples/mowa-2.wav"
+    ],
+    "speaker_embedding": "pawel_custom_speaker_embedding.pt",
+    "quality": "premium",
+    "language": "polish",
+    "voice_type": "male",
+    "parameters": {
+      "voice_strength": 1.0,
+      "naturalness": 0.9,
+      "clarity": 0.8,
+      "emotional_tone": "neutral"
+    },
+    "created_at": "C:\\Users\\pawel\\Desktop\\torrent-bot\\plugins\\audiobook"
+  }
+}

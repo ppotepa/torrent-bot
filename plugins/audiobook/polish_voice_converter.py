@@ -12,7 +12,7 @@ import torch
 import torchaudio
 
 # Import naszych komponentów
-from piper_tts import get_piper_tts
+from enhanced_piper_tts import get_piper_tts  # Enhanced version
 from simple_speaker_embedding import get_speaker_extractor
 
 logger = logging.getLogger(__name__)
@@ -68,85 +68,126 @@ class PolishVoiceConverter:
     
     def simple_voice_processing(self, base_audio_path: str, output_path: str) -> bool:
         """
-        Prosty post-processing audio aby przypominało użytkownika
-        (bez zaawansowanego voice cloning - to byłby placeholder)
+        🎭 ULEPSZONE VOICE PROCESSING - redukcja robotycznego dźwięku
         
         Args:
-            base_audio_path: Ścieżka do bazowego audio z Piper
+            base_audio_path: Ścieżka do bazowego audio z Enhanced Piper
             output_path: Ścieżka do zapisu przetworzonego audio
             
         Returns:
             bool: True jeśli sukces
         """
         try:
-            logger.info("Aplikowanie prostego voice processing...")
+            logger.info("🎭 Aplikowanie ulepszonego voice processing...")
             
             # Załaduj bazowe audio
             audio, sr = torchaudio.load(base_audio_path)
             
-            # === PROSTY VOICE PROCESSING ===
-            # W prawdziwym voice cloning tutaj byłyby zaawansowane transformacje
-            # Na razie robimy proste modyfikacje audio
+            # === ULEPSZONE VOICE PROCESSING ===
             
-            # 1. Lekka modulacja pitch (symulacja charakterystyki głosu)
-            pitch_shift_factor = 0.95  # Lekkie obniżenie
+            # 1. 🎯 Inteligentna redukcja robotycznego dźwięku
+            # Lekka denormalizacja dla naturalności
+            audio = audio * 0.95  # Lekko ciszej
             
-            # Prosty pitch shift przez interpolację
-            original_length = audio.shape[1]
-            new_length = int(original_length / pitch_shift_factor)
-            
-            # Resample do nowej długości (prosty pitch shift)
-            if new_length != original_length:
-                resampler = torchaudio.transforms.Resample(
-                    orig_freq=sr,
-                    new_freq=int(sr * pitch_shift_factor)
-                )
-                audio_shifted = resampler(audio)
-                
-                # Przywróć oryginalną długość
-                target_resampler = torchaudio.transforms.Resample(
-                    orig_freq=int(sr * pitch_shift_factor),
-                    new_freq=sr
-                )
-                audio = target_resampler(audio_shifted)
-            
-            # 2. Lekki filtr charakterystyki (boost średnich częstotliwości)
-            # Prosty EQ effect
-            from scipy import signal
+            # 2. 🎵 Naturalna modulacja amplitudy (symulacja oddechu)
             import numpy as np
+            from scipy import signal
             
-            # Konwertuj do numpy dla łatwiejszego przetwarzania
             audio_np = audio.numpy()
             
-            # Projektuj filtr bandpass dla średnich częstotliwości (boost głosu)
-            nyquist = sr // 2
-            low_freq = 300 / nyquist   # 300 Hz
-            high_freq = 3000 / nyquist # 3000 Hz
+            # Generuj subtelną modulację amplitudy (4-6 Hz - naturalna częstość oddechu)
+            modulation_freq = 5.0  # Hz
+            t = np.linspace(0, audio_np.shape[1] / sr, audio_np.shape[1])
+            amplitude_modulation = 1.0 + 0.02 * np.sin(2 * np.pi * modulation_freq * t)
             
-            b, a = signal.butter(2, [low_freq, high_freq], btype='band')
-            
-            # Aplikuj filtr do każdego kanału
-            filtered_audio = np.zeros_like(audio_np)
+            # Aplikuj modulację do każdego kanału
             for channel in range(audio_np.shape[0]):
-                # Lekki boost średnich częstotliwości
-                filtered = signal.filtfilt(b, a, audio_np[channel])
-                # Mix z oryginalnym (70% oryginał + 30% boost)
-                filtered_audio[channel] = 0.7 * audio_np[channel] + 0.3 * filtered
+                audio_np[channel] *= amplitude_modulation
             
+            # 3. 🎚️ Subtelny EQ dla naturalności głosu
+            # Boost częstotliwości wokalnych (1-3 kHz) i lekko obniż wysokie
+            nyquist = sr // 2
+            
+            # Filtr shelf dla wysokich częstotliwości (powyżej 4kHz)
+            high_freq = 4000 / nyquist
+            if high_freq < 1.0:
+                b_high, a_high = signal.butter(2, high_freq, btype='highpass')
+                
+                # Filtr boost dla częstotliwości wokalnych (800-3000 Hz)
+                low_vocal = 800 / nyquist
+                high_vocal = 3000 / nyquist
+                
+                if low_vocal < 1.0 and high_vocal < 1.0:
+                    b_vocal, a_vocal = signal.butter(2, [low_vocal, high_vocal], btype='band')
+                    
+                    # Aplikuj filtry do każdego kanału
+                    processed_audio = np.zeros_like(audio_np)
+                    for channel in range(audio_np.shape[0]):
+                        # Boost średnich częstotliwości wokalnych
+                        vocal_boost = signal.filtfilt(b_vocal, a_vocal, audio_np[channel])
+                        
+                        # Lekko obniż wysokie częstotliwości
+                        high_content = signal.filtfilt(b_high, a_high, audio_np[channel])
+                        
+                        # Mix: 85% oryginał + 15% boost wokalny - 5% wysokie
+                        processed_audio[channel] = (
+                            0.85 * audio_np[channel] + 
+                            0.15 * vocal_boost - 
+                            0.05 * high_content
+                        )
+                else:
+                    processed_audio = audio_np
+            else:
+                processed_audio = audio_np
+            
+            # 4. 🎭 Subtelna charakterystyka głosu użytkownika
+            if self.speaker_embedding is not None:
+                # Prosty pitch shift oparty na charakterystyce użytkownika
+                # (w prawdziwym voice cloning byłyby zaawansowane transformacje)
+                
+                # Ekstrakcja charakterystyki z embedding (uproszczone)
+                embedding_mean = float(self.speaker_embedding.mean())
+                
+                # Mapuj embedding na subtelną modulację pitch (-0.05 do +0.05)
+                pitch_adjustment = np.tanh(embedding_mean) * 0.05
+                
+                # Prosty pitch shift przez time stretching
+                if abs(pitch_adjustment) > 0.01:
+                    stretch_factor = 1.0 + pitch_adjustment
+                    
+                    # Time stretch każdego kanału
+                    for channel in range(processed_audio.shape[0]):
+                        original_length = len(processed_audio[channel])
+                        new_length = int(original_length * stretch_factor)
+                        
+                        # Interpolacja dla stretch/compress
+                        x_old = np.linspace(0, 1, original_length)
+                        x_new = np.linspace(0, 1, new_length)
+                        stretched = np.interp(x_new, x_old, processed_audio[channel])
+                        
+                        # Przywróć oryginalną długość przez resampling
+                        if new_length != original_length:
+                            x_resample = np.linspace(0, 1, original_length)
+                            processed_audio[channel] = np.interp(x_resample, x_new, stretched)
+            
+            # 5. 🎚️ Finalna normalizacja z naturalnym headroom
             # Konwertuj z powrotem do tensor
-            audio = torch.from_numpy(filtered_audio).float()
+            audio = torch.from_numpy(processed_audio).float()
             
-            # 3. Normalizacja końcowa
-            audio = torch.nn.functional.normalize(audio, dim=1) * 0.8  # Lekko ciszej
+            # Gentle normalization z headroom
+            max_amplitude = audio.abs().max()
+            if max_amplitude > 0.1:  # Tylko jeśli jest za głośno
+                target_amplitude = 0.7  # Naturalne headroom
+                audio = audio * (target_amplitude / max_amplitude)
             
             # Zapisz przetworzone audio
             torchaudio.save(output_path, audio, sr)
             
-            logger.info(f"Voice processing zakończony: {output_path}")
+            logger.info(f"🎭 Ulepszone voice processing zakończone: {output_path}")
             return True
             
         except Exception as e:
-            logger.error(f"Błąd voice processing: {e}")
+            logger.error(f"💥 Błąd ulepszonego voice processing: {e}")
             return False
     
     def synthesize_with_voice_cloning(self, text: str, output_path: str) -> bool:

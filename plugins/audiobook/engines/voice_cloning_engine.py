@@ -25,10 +25,10 @@ class VoiceCloningEngine(BaseTTSEngine):
             # Import from parent directory
             import sys
             sys.path.append('..')
-            from polish_voice_converter import get_voice_converter
-            self.converter = get_voice_converter()
+            from polish_voice_converter import PolishVoiceConverter  # Uses Enhanced Piper
+            self.converter = PolishVoiceConverter()
             self._available = self.converter.is_available() if self.converter else False
-            logger.info("✅ Voice Cloning Engine initialized successfully")
+            logger.info("✅ Voice Cloning Engine initialized with Enhanced Piper TTS")
         except Exception as e:
             logger.error(f"❌ Voice Cloning Engine failed to initialize: {e}")
             self.converter = None
