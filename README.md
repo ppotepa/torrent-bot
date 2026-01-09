@@ -1,10 +1,4 @@
-# Torrent Bot - Modern SOLID Architecture 🚀
 
-> **⚠️ Legal Disclaimer**: This repository is intended for educational and fair use purposes only. Piracy is illegal and we do not condone or support any illegal downloading of copyrighted material. Users are responsible for ensuring they comply with their local laws and only download content they have the legal right to access.
-
-## 🏗️ Architecture Overview
-
-This bot has been completely refactored using **SOLID principles** for maintainability, testability, and extensibility:
 
 ### 📁 Project Structure
 ```
